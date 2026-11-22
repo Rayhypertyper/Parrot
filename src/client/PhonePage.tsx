@@ -15,6 +15,7 @@ import {
 } from "./components/CrewParts";
 import { IconBoard, IconHand } from "./ui/icons";
 import { Wordmark } from "./ui/Wordmark";
+import { HandsFreeOffers } from "./voice/HandsFreeOffers";
 import { TalkKey } from "./voice/TalkKey";
 import { useVoice } from "./voice/VoiceProvider";
 import { VoiceSheet } from "./voice/VoiceSheet";
@@ -65,6 +66,7 @@ function PhoneHome({ feed }: { feed: Feed }) {
       </section>
 
       <NoticeBar />
+      <HandsFreeOffers feed={feed} />
 
       <main className="cr-phone__main">
         {offers.map(({ offer, request }) => (
