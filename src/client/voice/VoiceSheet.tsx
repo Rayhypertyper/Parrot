@@ -8,25 +8,27 @@ import { Button, Sheet } from "../ui/primitives";
 import { IconAlert, IconCheck, IconKeyboard, IconMic, IconX } from "../ui/icons";
 import { VoiceRing } from "./TalkKey";
 import { isVoiceActive, PHASE_LABEL, useVoice, type VoiceSubject } from "./VoiceProvider";
-import { sameSubject, voiceSubjects } from "./subjects";
+import { newVoiceSubject, sameSubject, voiceSubjects } from "./subjects";
 
-export function VoiceSheet({ feed }: { feed: Feed }) {
+export function VoiceSheet({ feed, showSubjectPicker = true }: { feed: Feed; showSubjectPicker?: boolean }) {
   const v = useVoice();
   const [typing, setTyping] = useState(false);
   const active = isVoiceActive(v.phase);
-  const subjects = voiceSubjects(feed);
+  const subjects = showSubjectPicker ? voiceSubjects(feed) : [];
   // If the feed moved on (offer accepted elsewhere, request finished), follow
   // the same request where possible instead of pointing at a stale offer.
-  const subject =
-    subjects.find((s) => sameSubject(v.subject, s)) ??
-    (active ? v.subject : null) ??
-    subjects.find((s) => v.subject?.requestId && s.requestId === v.subject.requestId) ??
-    subjects[0];
+  const subject = showSubjectPicker
+    ? subjects.find((s) => sameSubject(v.subject, s)) ??
+      (active ? v.subject : null) ??
+      subjects.find((s) => v.subject?.requestId && s.requestId === v.subject.requestId) ??
+      subjects[0]
+    : v.subject ?? newVoiceSubject;
   const { setSubject } = v;
   useEffect(() => {
-    if (!active && !sameSubject(v.subject, subject)) setSubject(subject);
-  }, [active, v.subject, subject, setSubject]);
-  const showTyping = typing || v.error !== null;
+    if (showSubjectPicker && !active && !sameSubject(v.subject, subject)) setSubject(subject);
+  }, [showSubjectPicker, active, v.subject, subject, setSubject]);
+  const dashboardComposer = !showSubjectPicker && !subject.requestId && !subject.offerId;
+  const showTyping = dashboardComposer || typing || v.error !== null;
   const finish = () => {
     setTyping(false);
     v.close();
@@ -72,7 +74,7 @@ export function VoiceSheet({ feed }: { feed: Feed }) {
             </label>
           ))}
         </fieldset>
-      ) : (
+      ) : !dashboardComposer && (
         <p className="cr-subject-line">{subject.label}</p>
       )}
 
@@ -88,7 +90,7 @@ export function VoiceSheet({ feed }: { feed: Feed }) {
         <p className="cr-onair__state" role="status">
           {v.phase === "idle" ? "Tap to start talking" : PHASE_LABEL[v.phase]}
         </p>
-        {active && (
+        {active && !dashboardComposer && (
           <Button tone="secondary" onClick={v.end}>
             End
           </Button>
@@ -125,7 +127,12 @@ export function VoiceSheet({ feed }: { feed: Feed }) {
       {showTyping ? (
         <div className="cr-manual">
           <h3 className="cr-manual__title">Type instead</h3>
-          <ManualUpdate feed={feed} subject={subject} onDone={finish} />
+          <ManualUpdate
+            feed={feed}
+            subject={subject}
+            onDone={finish}
+            onType={dashboardComposer && active ? v.end : undefined}
+          />
         </div>
       ) : (
         <button className="cr-link cr-link--icon" onClick={() => setTyping(true)}>
@@ -136,7 +143,12 @@ export function VoiceSheet({ feed }: { feed: Feed }) {
   );
 }
 
-function ManualUpdate({ feed, subject, onDone }: { feed: Feed; subject: VoiceSubject; onDone: () => void }) {
+function ManualUpdate({ feed, subject, onDone, onType }: {
+  feed: Feed;
+  subject: VoiceSubject;
+  onDone: () => void;
+  onType?: () => void;
+}) {
   const { act, pending } = useCrew();
   const [note, setNote] = useState("");
   const request = requestById(feed, subject.requestId);
@@ -179,5 +191,5 @@ function ManualUpdate({ feed, subject, onDone }: { feed: Feed; subject: VoiceSub
     );
   }
   if (request) return <HandoffActions feed={feed} request={request} onDone={onDone} />;
-  return <AskForm id="voice-ask" onDone={onDone} />;
+  return <AskForm id="voice-ask" onDone={onDone} onFocus={onType} />;
 }

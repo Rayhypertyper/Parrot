@@ -2,6 +2,8 @@ import type { Feed } from "../crew/contract";
 import { memberById, myAssignments, myOpenRequests, pendingOffers } from "../crew/derive";
 import type { VoiceSubject } from "./VoiceProvider";
 
+export const newVoiceSubject: VoiceSubject = { label: "Something new: ask for help or share an update" };
+
 /** Plausible things a conversation could be about, most urgent first. */
 export function voiceSubjects(feed: Feed): VoiceSubject[] {
   const list: VoiceSubject[] = [];
@@ -11,7 +13,7 @@ export function voiceSubjects(feed: Feed): VoiceSubject[] {
   }
   for (const r of myAssignments(feed)) list.push({ label: `Your handoff: ${r.title}`, requestId: r.id });
   for (const r of myOpenRequests(feed)) list.push({ label: `Your request: ${r.title}`, requestId: r.id });
-  list.push({ label: "Something new: ask for help or share an update" });
+  list.push(newVoiceSubject);
   return list;
 }
 

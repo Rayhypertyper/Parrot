@@ -5,8 +5,8 @@ import { Button } from "../ui/primitives";
 /** Typed request: the always-available, no-mic way to ask the crew for help. */
 export const AskForm = forwardRef<
   HTMLTextAreaElement,
-  { compact?: boolean; onDone?: () => void; id?: string }
->(function AskForm({ compact, onDone, id = "ask" }, ref) {
+  { compact?: boolean; onDone?: () => void; onFocus?: () => void; id?: string }
+>(function AskForm({ compact, onDone, onFocus, id = "ask" }, ref) {
   const { act, pending } = useCrew();
   const [text, setText] = useState("");
   const busy = pending[intentKey({ kind: "request_help" })];
@@ -35,6 +35,7 @@ export const AskForm = forwardRef<
           className="cr-input cr-input--area"
           rows={compact ? 1 : 2}
           value={text}
+          onFocus={onFocus}
           onChange={(e) => setText(e.target.value)}
           placeholder={compact ? "What do you need?" : "We need a cart at packing"}
           onKeyDown={(e) => {

@@ -23,7 +23,7 @@ import { Wordmark } from "./ui/Wordmark";
 import { TalkKey } from "./voice/TalkKey";
 import { useVoice } from "./voice/VoiceProvider";
 import { VoiceSheet } from "./voice/VoiceSheet";
-import { voiceSubjects } from "./voice/subjects";
+import { newVoiceSubject } from "./voice/subjects";
 
 export function BoardPage() {
   usePageTitle("Parrot board");
@@ -60,7 +60,7 @@ function Board({ feed }: { feed: Feed }) {
             <span className="cr-me__name">{feed.me.name}</span>
             <AvailabilityControl me={feed.me} />
           </div>
-          <TalkKey size="md" onPress={() => voice.open(voiceSubjects(feed)[0])} />
+          <TalkKey size="md" onPress={() => void voice.start(newVoiceSubject)} />
           <a className="cr-icon-btn" href="/" aria-label="Open the phone view">
             <IconPhone size={20} />
           </a>
@@ -169,7 +169,7 @@ function Board({ feed }: { feed: Feed }) {
         </aside>
       </main>
 
-      <VoiceSheet feed={feed} />
+      <VoiceSheet feed={feed} showSubjectPicker={false} />
     </div>
   );
 }
