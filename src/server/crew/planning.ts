@@ -11,12 +11,11 @@ interface PlanInput {
   newEvent: Prisma.JsonValue
   candidates: CrewMember[]
   priorOffers: Pick<CrewOffer, 'recipientId' | 'status' | 'message'>[]
+  maxOffers?: 2
 }
 
-type PlanProposal = { requestId: string; revision: number; message: string } & (
-  | { action: 'wait' }
-  | { action: 'offer'; memberId: string; pickupLocation?: string; destination?: string }
-)
+type ProposedOffer = { memberId: string; message: string; pickupLocation?: string; destination?: string }
+type PlanProposal = { action: 'wait' } | { action: 'offer'; offers: ProposedOffer[] }
 
 export type Planner = (input: PlanInput) => Promise<unknown>
 
@@ -35,22 +34,43 @@ function result(requestId: string, status: RetryPlanResult['result']): RetryPlan
 function readProposal(value: unknown, input: PlanInput): PlanProposal {
   if (!value || typeof value !== 'object') throw new Error('Invalid planner response')
   const body = value as Record<string, unknown>
-  const { message, action, memberId } = body
+  const { action } = body
   const { id: requestId } = input.request
   const { revision } = input
-  if (body.requestId !== requestId || body.revision !== revision ||
-      typeof message !== 'string' || !message.trim() || message.length > 500 || message.includes('\0')) {
+  if (body.requestId !== requestId || body.revision !== revision) {
     throw new Error('Invalid planner response')
   }
-  if (action === 'wait') return { action, requestId, revision, message }
-  if (action !== 'offer' || typeof memberId !== 'string' || !input.candidates.some(({ id }) => id === memberId)) {
+  if (action === 'wait' && validMessage(body.message)) return { action }
+  if (body.offers !== undefined && (input.maxOffers !== 2 || !Array.isArray(body.offers))) {
     throw new Error('Invalid planner decision')
   }
-  return {
-    action, requestId, revision, memberId, message: message.trim(),
-    pickupLocation: exactQuote(body.pickupLocation, input.request.latestFact, input.request.pickupLocation),
-    destination: exactQuote(body.destination, input.request.title, input.request.destination, input.request.latestFact),
+  const selections: unknown[] = Array.isArray(body.offers) ? body.offers : [body]
+  if (action !== 'offer' || !selections.length || selections.length > (input.maxOffers ?? 1)) {
+    throw new Error('Invalid planner decision')
   }
+  const pickupLocation = exactQuote(body.pickupLocation, input.request.latestFact, input.request.pickupLocation)
+  const destination = exactQuote(body.destination, input.request.title, input.request.destination, input.request.latestFact)
+  const seen = new Set<string>()
+  const offers = selections.map((value) => {
+    if (!value || typeof value !== 'object') throw new Error('Invalid offer')
+    const { memberId, message } = value as Record<string, unknown>
+    if (typeof memberId !== 'string' || seen.has(memberId) || !input.candidates.some(({ id }) => id === memberId) ||
+        !validMessage(message)) {
+      throw new Error('Invalid offer')
+    }
+    seen.add(memberId)
+    return { memberId, message: message.trim(), pickupLocation, destination }
+  })
+  // A legacy or single-recipient decision still gets a second eligible offer.
+  const backup = input.maxOffers === 2 && offers.length === 1 && input.candidates.find(({ id }) => !seen.has(id))
+  if (backup) offers.push({
+    memberId: backup.id, message: `Can you take this handoff? ${input.request.title}`, pickupLocation, destination,
+  })
+  return { action, offers }
+}
+
+function validMessage(value: unknown): value is string {
+  return typeof value === 'string' && !!value.trim() && value.length <= 500 && !value.includes('\0')
 }
 
 function exactQuote(value: unknown, ...sources: Array<string | null>): string | undefined {
@@ -58,7 +78,7 @@ function exactQuote(value: unknown, ...sources: Array<string | null>): string | 
       sources.some((source) => source?.includes(value))) return value
 }
 
-function offerWithFacts(request: RequestRow, proposal: Extract<PlanProposal, { action: 'offer' }>) {
+function offerWithFacts(request: RequestRow, proposal: ProposedOffer) {
   const pickupLocation = proposal.pickupLocation ?? request.pickupLocation
   const destination = request.destination ?? proposal.destination
   const parts = [proposal.message]
@@ -73,12 +93,13 @@ function offerWithFacts(request: RequestRow, proposal: Extract<PlanProposal, { a
   return { message: parts.join('\n'), pickupLocation, destination }
 }
 
-function eligibleMembers(tx: CrewTransaction, request: RequestRow, memberId?: string) {
+function eligibleMembers(tx: CrewTransaction, request: RequestRow, memberIds?: string[]) {
   return tx.crewMember.findMany({
     where: {
-      id: { equals: memberId, not: request.requesterId },
+      id: { in: memberIds, not: request.requesterId },
       crewId: request.crewId,
       availability: 'available',
+      lastSeenAt: { gte: new Date(Date.now() - 45_000) },
       offers: { none: { OR: [
         { releasedAt: null, status: { in: ['pending', 'accepted'] } },
         { requestId: request.id, status: { in: ['declined', 'accepted'] } },
@@ -126,6 +147,7 @@ export async function planRequest(
       const input: PlanInput = {
         request: { id, requesterId, title, latestFact, pickupLocation, destination },
         revision, newEvent: latest, candidates, priorOffers,
+        ...(candidates.length > 1 && { maxOffers: 2 as const }),
       }
       return { planAttemptId, input }
     })
@@ -147,19 +169,23 @@ export async function planRequest(
         await setPlanningStatus(tx, requestId, status)
         return status
       }
-      const [member] = await eligibleMembers(tx, request, proposal.memberId)
-      if (!member) {
+      const members = await eligibleMembers(tx, request, proposal.offers.map(({ memberId }) => memberId))
+      if (members.length !== proposal.offers.length) {
         await setPlanningStatus(tx, requestId, 'waiting')
         return 'candidate_changed'
       }
-      const { message, pickupLocation, destination } = offerWithFacts(request, proposal)
-      await tx.crewOffer.create({ data: { requestId, recipientId: member.id, message } })
+      const { pickupLocation, destination } = offerWithFacts(request, proposal.offers[0])
+      for (const member of members) {
+        const offer = proposal.offers.find(({ memberId }) => memberId === member.id)!
+        const { message } = offerWithFacts(request, offer)
+        await tx.crewOffer.create({ data: { requestId, recipientId: member.id, message } })
+        await tx.crewActivity.create({
+          data: { crewId: actor.crewId, requestId, actorName: 'Crew Radio', summary: `Offered the handoff to ${member.name}.` },
+        })
+      }
       await tx.crewRequest.update({
         where: { id: requestId },
         data: { ...planningReset, status: 'offered', revision: { increment: 1 }, pickupLocation, destination },
-      })
-      await tx.crewActivity.create({
-        data: { crewId: actor.crewId, requestId, actorName: 'Crew Radio', summary: `Offered the handoff to ${member.name}.` },
       })
       return 'offered'
     })

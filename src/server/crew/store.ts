@@ -36,7 +36,9 @@ export async function joinCrew(db: CrewDatabase, input: CrewJoinInput): Promise<
     if (!member) notFound('Choose a profile in this crew.')
     if (member.sessionHash) throw new CrewError(409, 'profile_taken', 'That profile is already claimed. Choose another.')
     const memberToken = secretToken()
-    await tx.crewMember.update({ where: { id: member.id }, data: { sessionHash: tokenHash(memberToken) } })
+    await tx.crewMember.update({
+      where: { id: member.id }, data: { sessionHash: tokenHash(memberToken), lastSeenAt: new Date() },
+    })
     return { memberToken, memberId: member.id, crewId: crew.id }
   })
 }
@@ -51,6 +53,13 @@ export async function getMember(db: CrewDatabase, header: string | undefined): P
 const memberFields = { id: true, name: true, location: true, availability: true, skills: true } as const
 
 export async function getFeed(db: CrewDatabase, actor: CrewActor): Promise<CrewFeed> {
+  const seenAt = new Date()
+  // Track polling separately from the timestamp for member and activity changes.
+  await db.$executeRaw`
+    UPDATE "CrewMember" SET "lastSeenAt" = ${seenAt}
+    WHERE "id" = ${actor.id}
+      AND ("lastSeenAt" IS NULL OR "lastSeenAt" < ${new Date(+seenAt - 10_000)})
+  `
   return db.$transaction(async (tx) => {
     const members = await tx.crewMember.findMany({
       where: { crewId: actor.crewId }, select: { ...memberFields, updatedAt: true }, orderBy: { name: 'asc' },

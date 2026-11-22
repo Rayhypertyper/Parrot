@@ -145,6 +145,7 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
 
   await t.test('replacement voice offer, duplicate retries and simultaneous accepts', async () => {
     const { jo, alex, maya, jules, crewCode } = await fixture()
+    assert.equal((await event(maya, { kind: 'availability_update', availability: 'busy' })).status, 200)
     assert.equal((await call(crewRoutes.join, { crewCode, profileCode: 'jo' })).status, 409)
     assert.equal((await call(crewRoutes.feed)).status, 401)
     const requestEvent = { eventId: randomUUID(), kind: 'request_help', text: 'We need a USB-C adapter in Room B.', location: 'Room B' }
@@ -160,6 +161,7 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     const session = await call(crewRoutes.voiceSession, { offerId: first.id }, alex)
     assert.equal(session.status, 200)
     assert.equal(session.data.conversationToken, 'local-elevenlabs-token')
+    assert.equal((await event(maya, { kind: 'availability_update', availability: 'available' })).status, 200)
 
     const pickup = `the silver case beside booth ${randomUUID().slice(0, 4)} — lower shelf`
     const note = `I need to stay with the projector. The spare is in ${pickup}.`
@@ -198,6 +200,63 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     assert.equal(final.requests[0].status, 'done')
     assert.equal(final.activity.filter(({ summary }) => summary.includes(note)).length, 1)
     assert.equal(final.activity.filter(({ summary }) => summary === 'Accepted the handoff.').length, 1)
+  })
+
+  await t.test('independent voice offers stay live when one teammate declines', async () => {
+    const { jo, alex, maya } = await fixture()
+    const callsBefore = modelCalls
+    const { status, data } = await event(jo, { kind: 'request_help', text: 'Bring a cable to Room B.' })
+    assert.equal(status, 200)
+    const [first] = (await feed(alex)).myOffers
+    const [second] = (await feed(maya)).myOffers
+    assert.equal(first.requestId, data.requestId)
+    assert.equal(second.requestId, data.requestId)
+    assert.equal(first.status, 'pending')
+    assert.equal(second.status, 'pending')
+    assert.equal(modelCalls, callsBefore + 1)
+
+    async function open(offerId: string, member: CrewSession) {
+      const session = await call(crewRoutes.voiceSession, { offerId }, member)
+      assert.equal(session.status, 200)
+      return {
+        'x-crew-webhook-secret': process.env.ELEVENLABS_WEBHOOK_SECRET,
+        'x-crew-ticket': session.data.dynamicVariables.secret__crew_ticket,
+        'x-elevenlabs-conversation-id': conversationId,
+      }
+    }
+    const firstVoice = await open(first.id, alex)
+    const secondVoice = await open(second.id, maya)
+    assert.notEqual(firstVoice['x-elevenlabs-conversation-id'], secondVoice['x-elevenlabs-conversation-id'])
+    assert.equal((await call(crewRoutes.voiceTool, { kind: 'decline', location: 'Blue pouch' }, undefined, firstVoice)).status, 200)
+    assert.equal((await feed(maya)).myOffers[0].status, 'pending')
+    assert.equal((await feed(jo)).requests[0].status, 'offered')
+    assert.equal((await call(crewRoutes.voiceTool, { kind: 'accept' }, undefined, secondVoice)).status, 200)
+    const [assigned] = (await feed(jo)).requests
+    assert.equal(assigned.assigneeId, maya.memberId)
+    assert.equal(assigned.pickupLocation, 'Blue pouch')
+    assert.equal(modelCalls, callsBefore + 1)
+  })
+
+  await t.test('expired browser activity is excluded and simultaneous accepts have one winner', async () => {
+    const { jo, alex, maya, crewCode } = await fixture()
+    const { id: crewId } = await db.crew.findUniqueOrThrow({ where: { code: crewCode } })
+    await db.crewMember.create({ data: {
+      crewId, profileCode: 'offline', name: 'Absent', location: 'Room B', availability: 'available', skills: [],
+      lastSeenAt: new Date(Date.now() - 60_000),
+    } })
+    assert.equal((await event(jo, { kind: 'request_help', text: 'Need help with a table.' })).status, 200)
+    assert.deepEqual(planningInput?.candidates.map(({ name }) => name), ['Alex', 'Maya'])
+    const [first] = (await feed(alex)).myOffers
+    const [second] = (await feed(maya)).myOffers
+    const results = await Promise.all([
+      event(alex, { kind: 'accept', offerId: first.id }),
+      event(maya, { kind: 'accept', offerId: second.id }),
+    ])
+    assert.deepEqual(results.map(({ status }) => status).sort(), [200, 409])
+    const [request] = (await feed(jo)).requests
+    const outcomes = await db.crewOffer.findMany({ where: { requestId: request.id } })
+    assert.deepEqual(outcomes.map(({ status }) => status).sort(), ['accepted', 'withdrawn'])
+    assert.equal(outcomes.find(({ status }) => status === 'accepted')?.recipientId, request.assigneeId)
   })
 
   await t.test('planner timeout preserves a warehouse request and supports retry', async () => {

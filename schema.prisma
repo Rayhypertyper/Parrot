@@ -53,6 +53,7 @@ model CrewMember {
   availability CrewAvailability
   skills       String[]
   sessionHash  String?           @unique
+  lastSeenAt   DateTime?
   updatedAt    DateTime          @updatedAt
   crew         Crew              @relation(fields: [crewId], references: [id], onDelete: Cascade)
   requests     CrewRequest[]     @relation("Requester")
