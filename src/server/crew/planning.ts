@@ -3,6 +3,7 @@ import type { CrewRequest as RequestRow, Prisma } from '@prisma/client'
 import type { CrewMember, CrewOffer, RetryPlanResult } from '../../shared/crew/index'
 import { planningReset } from './commands'
 import { conflict, notFound } from './input'
+import { crewPhoneConfig } from './phoneConfig'
 import { crewTransaction, planLeaseMs, type CrewActor, type CrewDatabase, type CrewTransaction } from './store'
 
 interface PlanInput {
@@ -11,12 +12,11 @@ interface PlanInput {
   newEvent: Prisma.JsonValue
   candidates: CrewMember[]
   priorOffers: Pick<CrewOffer, 'recipientId' | 'status' | 'message'>[]
+  maxOffers?: 2
 }
 
-type PlanProposal = { requestId: string; revision: number; message: string } & (
-  | { action: 'wait' }
-  | { action: 'offer'; memberId: string; pickupLocation?: string; destination?: string }
-)
+type ProposedOffer = { memberId: string; message: string; pickupLocation?: string; destination?: string }
+type PlanProposal = { action: 'wait' } | { action: 'offer'; offers: ProposedOffer[] }
 
 export type Planner = (input: PlanInput) => Promise<unknown>
 
@@ -35,22 +35,38 @@ function result(requestId: string, status: RetryPlanResult['result']): RetryPlan
 function readProposal(value: unknown, input: PlanInput): PlanProposal {
   if (!value || typeof value !== 'object') throw new Error('Invalid planner response')
   const body = value as Record<string, unknown>
-  const { message, action, memberId } = body
+  const { action } = body
   const { id: requestId } = input.request
   const { revision } = input
-  if (body.requestId !== requestId || body.revision !== revision ||
-      typeof message !== 'string' || !message.trim() || message.length > 500 || message.includes('\0')) {
+  if (body.requestId !== requestId || body.revision !== revision) {
     throw new Error('Invalid planner response')
   }
-  if (action === 'wait') return { action, requestId, revision, message }
-  if (action !== 'offer' || typeof memberId !== 'string' || !input.candidates.some(({ id }) => id === memberId)) {
+  if (action === 'wait' && validMessage(body.message)) return { action }
+  if (body.offers !== undefined && (input.maxOffers !== 2 || !Array.isArray(body.offers))) {
     throw new Error('Invalid planner decision')
   }
-  return {
-    action, requestId, revision, memberId, message: message.trim(),
-    pickupLocation: exactQuote(body.pickupLocation, input.request.latestFact, input.request.pickupLocation),
-    destination: exactQuote(body.destination, input.request.title, input.request.destination, input.request.latestFact),
+  const selections: unknown[] = Array.isArray(body.offers) ? body.offers : [body]
+  if (action !== 'offer' || !selections.length || selections.length > (input.maxOffers ?? 1)) {
+    throw new Error('Invalid planner decision')
   }
+  const pickupLocation = exactQuote(body.pickupLocation, input.request.latestFact, input.request.pickupLocation)
+  const destination = exactQuote(body.destination, input.request.title, input.request.destination, input.request.latestFact)
+  const seen = new Set<string>()
+  const offers = selections.map((value) => {
+    if (!value || typeof value !== 'object') throw new Error('Invalid offer')
+    const { memberId, message } = value as Record<string, unknown>
+    if (typeof memberId !== 'string' || seen.has(memberId) || !input.candidates.some(({ id }) => id === memberId) ||
+        !validMessage(message)) {
+      throw new Error('Invalid offer')
+    }
+    seen.add(memberId)
+    return { memberId, message: message.trim(), pickupLocation, destination }
+  })
+  return { action, offers }
+}
+
+function validMessage(value: unknown): value is string {
+  return typeof value === 'string' && !!value.trim() && value.length <= 500 && !value.includes('\0')
 }
 
 function exactQuote(value: unknown, ...sources: Array<string | null>): string | undefined {
@@ -58,7 +74,7 @@ function exactQuote(value: unknown, ...sources: Array<string | null>): string | 
       sources.some((source) => source?.includes(value))) return value
 }
 
-function offerWithFacts(request: RequestRow, proposal: Extract<PlanProposal, { action: 'offer' }>) {
+function offerWithFacts(request: RequestRow, proposal: ProposedOffer) {
   const pickupLocation = proposal.pickupLocation ?? request.pickupLocation
   const destination = request.destination ?? proposal.destination
   const parts = [proposal.message]
@@ -73,15 +89,17 @@ function offerWithFacts(request: RequestRow, proposal: Extract<PlanProposal, { a
   return { message: parts.join('\n'), pickupLocation, destination }
 }
 
-function eligibleMembers(tx: CrewTransaction, request: RequestRow, memberId?: string) {
+function eligibleMembers(tx: CrewTransaction, request: RequestRow, phoneProfiles?: string[], memberIds?: string[]) {
   return tx.crewMember.findMany({
     where: {
-      id: { equals: memberId, not: request.requesterId },
+      id: { in: memberIds, not: request.requesterId },
       crewId: request.crewId,
+      profileCode: phoneProfiles ? { in: phoneProfiles } : undefined,
       availability: 'available',
       offers: { none: { OR: [
         { releasedAt: null, status: { in: ['pending', 'accepted'] } },
         { requestId: request.id, status: { in: ['declined', 'accepted'] } },
+        { requestId: request.id, phoneCall: { isNot: null } },
       ] } },
     },
     select: { id: true, name: true, location: true, availability: true, skills: true },
@@ -95,7 +113,9 @@ export async function planRequest(
 ): Promise<RetryPlanResult> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const started = await crewTransaction(db, actor.crewId, async (tx) => {
-      const request = await tx.crewRequest.findFirst({ where: { id: requestId, crewId: actor.crewId } })
+      const request = await tx.crewRequest.findFirst({
+        where: { id: requestId, crewId: actor.crewId }, include: { crew: { select: { code: true } } },
+      })
       if (!request) notFound('Request was not found.')
       if (request.status !== 'open') {
         if (explicit && attempt === 0) conflict('Only an open request can be planned.')
@@ -105,7 +125,9 @@ export async function planRequest(
           Date.now() - +request.planStartedAt < planLeaseMs && newEvent === undefined) {
         return result(requestId, 'planning')
       }
-      const candidates = await eligibleMembers(tx, request)
+      const phone = crewPhoneConfig(request.crew.code)
+      const phoneProfiles = phone && [...phone.contacts.keys()]
+      const candidates = await eligibleMembers(tx, request, phoneProfiles)
       if (!candidates.length) {
         await setPlanningStatus(tx, requestId, 'waiting')
         return result(requestId, 'waiting')
@@ -126,12 +148,13 @@ export async function planRequest(
       const input: PlanInput = {
         request: { id, requesterId, title, latestFact, pickupLocation, destination },
         revision, newEvent: latest, candidates, priorOffers,
+        ...(phone && candidates.length > 1 && { maxOffers: 2 as const }),
       }
-      return { planAttemptId, input }
+      return { planAttemptId, input, phoneProfiles }
     })
     if (!('input' in started)) return started
 
-    const { input, planAttemptId } = started
+    const { input, planAttemptId, phoneProfiles } = started
     let proposal: PlanProposal | undefined
     try {
       proposal = readProposal(await planner(input), input)
@@ -147,19 +170,27 @@ export async function planRequest(
         await setPlanningStatus(tx, requestId, status)
         return status
       }
-      const [member] = await eligibleMembers(tx, request, proposal.memberId)
-      if (!member) {
+      const members = await eligibleMembers(tx, request, phoneProfiles, proposal.offers.map(({ memberId }) => memberId))
+      if (!members.length) {
         await setPlanningStatus(tx, requestId, 'waiting')
         return 'candidate_changed'
       }
-      const { message, pickupLocation, destination } = offerWithFacts(request, proposal)
-      await tx.crewOffer.create({ data: { requestId, recipientId: member.id, message } })
+      const { pickupLocation, destination } = offerWithFacts(request, proposal.offers[0])
+      for (const offer of proposal.offers) {
+        const member = members.find(({ id }) => id === offer.memberId)
+        if (!member) continue
+        const { message } = offerWithFacts(request, offer)
+        await tx.crewOffer.create({ data: {
+          requestId, recipientId: member.id, message,
+          ...(phoneProfiles && { phoneCall: { create: {} } }),
+        } })
+        await tx.crewActivity.create({
+          data: { crewId: actor.crewId, requestId, actorName: 'Parrot', summary: `Offered the handoff to ${member.name}.` },
+        })
+      }
       await tx.crewRequest.update({
         where: { id: requestId },
         data: { ...planningReset, status: 'offered', revision: { increment: 1 }, pickupLocation, destination },
-      })
-      await tx.crewActivity.create({
-        data: { crewId: actor.crewId, requestId, actorName: 'Crew Radio', summary: `Offered the handoff to ${member.name}.` },
       })
       return 'offered'
     })

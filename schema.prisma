@@ -35,6 +35,13 @@ enum CrewPlanningStatus {
   failed
 }
 
+enum CrewPhoneCallStatus {
+  queued
+  dialing
+  submitted
+  ended
+}
+
 model Crew {
   id       String         @id @default(uuid())
   code     String         @unique
@@ -102,9 +109,21 @@ model CrewOffer {
   request      CrewRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
   recipient    CrewMember        @relation(fields: [recipientId], references: [id])
   voiceTickets CrewVoiceTicket[]
+  phoneCall    CrewPhoneCall?
 
   @@index([requestId, createdAt])
   @@index([recipientId, createdAt])
+}
+
+model CrewPhoneCall {
+  offerId     String              @id
+  status      CrewPhoneCallStatus @default(queued)
+  ticketId    String?             @unique
+  createdAt   DateTime            @default(now())
+  offer       CrewOffer           @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  ticket      CrewVoiceTicket?    @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
 }
 
 model CrewEventRecord {
@@ -138,7 +157,7 @@ model CrewActivity {
 model CrewVoiceTicket {
   id             String       @id @default(uuid())
   tokenHash      String       @unique
-  conversationId String       @unique
+  conversationId String?      @unique
   memberId       String
   requestId      String?
   offerId        String?
@@ -146,6 +165,7 @@ model CrewVoiceTicket {
   member         CrewMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
   request        CrewRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
   offer          CrewOffer?   @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  phoneCall      CrewPhoneCall?
 
   @@index([expiresAt])
 }

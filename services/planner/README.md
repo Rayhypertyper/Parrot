@@ -48,3 +48,5 @@ Before the demo, send a real authenticated `POST /plan` with at least one candid
 ```
 
 An offer contains the echoed request ID and revision, `action: "offer"`, `memberId`, `message`, and any known verbatim `pickupLocation` and `destination`. A wait contains the echoed IDs, `action: "wait"`, and `message`.
+
+When Wasp includes `maxOffers: 2` for a phone handoff, the planner may return `offers: [{ "memberId": "…", "message": "…" }]` in place of the top-level member and message. Use two distinct eligible members when both could help. Put any known pickup and destination at the top level for both offers. A single offer in the original format also works.

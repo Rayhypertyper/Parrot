@@ -1,8 +1,9 @@
-import { api, apiNamespace, app, page, route } from '@wasp.sh/spec'
+import { api, apiNamespace, app, job, page, route } from '@wasp.sh/spec'
 import { PhonePage } from './src/client/PhonePage' with { type: 'ref' }
 import { BoardPage } from './src/client/BoardPage' with { type: 'ref' }
 import { crewApiMiddleware, crewEvents, crewFeed, crewJoin, crewRetryPlan, crewVoiceSession, crewVoiceTool } from './src/server/crew/routes' with { type: 'ref' }
 import { seedDemo } from './src/server/crew/seed' with { type: 'ref' }
+import { dialCrewOffers } from './src/server/crew/phoneWorker' with { type: 'ref' }
 import { crewRoutes } from './src/shared/crew/index'
 
 export default app({
@@ -20,5 +21,6 @@ export default app({
     api('POST', crewRoutes.retryPlan, crewRetryPlan, { auth: false }),
     api('POST', crewRoutes.voiceSession, crewVoiceSession, { auth: false }),
     api('POST', crewRoutes.voiceTool, crewVoiceTool, { auth: false }),
+    job(dialCrewOffers, { executor: 'PgBoss', schedule: { cron: '* * * * *' } }),
   ],
 })

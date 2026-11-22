@@ -1,11 +1,13 @@
 import { timingSafeEqual } from 'node:crypto'
-import type { CrewMember } from '@prisma/client'
+import type { CrewMember, CrewOffer, CrewRequest } from '@prisma/client'
 import type { VoiceSessionInput, VoiceSessionResult } from '../../shared/crew/index'
 import { recordCommand } from './commands'
 import { conflict, CrewError, invalid, notFound, parseCommand } from './input'
 import { crewTransaction, secretToken, tokenHash, type CrewDatabase, type CrewTransaction } from './store'
 
 export type ElevenLabsToken = () => Promise<{ token: string; conversationId: string }>
+
+export const voiceTicketLifetimeMs = 15 * 60 * 1000
 
 export const getElevenLabsToken: ElevenLabsToken = async () => {
   const apiKey = process.env.ELEVENLABS_API_KEY
@@ -71,27 +73,33 @@ export async function startVoiceSession(
     await tx.crewVoiceTicket.create({
       data: {
         tokenHash: tokenHash(ticket), conversationId, memberId: member.id, requestId: context.request?.id,
-        offerId: context.offer?.id, expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        offerId: context.offer?.id, expiresAt: new Date(Date.now() + voiceTicketLifetimeMs),
       },
     })
     return context
   })
   return {
     conversationToken: token,
-    dynamicVariables: {
-      secret__crew_ticket: ticket,
-      member_name: member.name,
-      opening_message: offer?.status === 'pending'
-        ? `Hi ${member.name}. ${offer.message}`
-        : `Hi ${member.name}. What would you like to tell the crew?`,
-      offer_context: offer?.message ?? '',
-      request_context: request ? [
-        request.title, request.destination && `Destination: ${request.destination}`,
-        request.pickupLocation && `Pickup: ${request.pickupLocation}`, request.latestFact,
-        `Status: ${request.status}`,
-        request.requesterId === member.id ? 'You are speaking with the requester.' : 'You are speaking with the offer recipient.',
-      ].filter(Boolean).join('\n') : '',
-    },
+    dynamicVariables: voiceVariables(ticket, member, request, offer),
+  }
+}
+
+export function voiceVariables(
+  ticket: string, member: Pick<CrewMember, 'id' | 'name'>, request?: CrewRequest, offer?: CrewOffer,
+): VoiceSessionResult['dynamicVariables'] {
+  return {
+    secret__crew_ticket: ticket,
+    member_name: member.name,
+    opening_message: offer?.status === 'pending'
+      ? `Parrot here. ${offer.message}`
+      : `Hi ${member.name}. What do you need?`,
+    offer_context: offer?.message ?? '',
+    request_context: request ? [
+      request.title, request.destination && `Destination: ${request.destination}`,
+      request.pickupLocation && `Pickup: ${request.pickupLocation}`, request.latestFact,
+      `Status: ${request.status}`,
+      request.requesterId === member.id ? 'You are speaking with the requester.' : 'You are speaking with the offer recipient.',
+    ].filter(Boolean).join('\n') : '',
   }
 }
 
@@ -105,21 +113,37 @@ export function authorizeVoiceTool(header: string | undefined) {
 export async function recordVoiceTool(
   db: CrewDatabase, token: string | undefined, conversationId: string | undefined, body: Record<string, unknown>,
 ) {
-  const ticket = token && /^[\w-]{43}$/.test(token) && await db.crewVoiceTicket.findUnique({
+  const lookup = token && /^[\w-]{43}$/.test(token) && await db.crewVoiceTicket.findUnique({
     where: { tokenHash: tokenHash(token) },
-    include: { member: { select: { crewId: true, sessionHash: true } } },
+    select: { id: true, memberId: true, member: { select: { crewId: true } } },
   })
-  if (!ticket || ticket.conversationId !== conversationId || !ticket.member.sessionHash ||
-      +ticket.expiresAt <= Date.now()) {
+  if (!lookup || !conversationId) {
     throw new CrewError(401, 'unauthorized', 'This voice session is invalid or has expired.')
   }
-  if ('requestId' in body || 'offerId' in body || 'memberId' in body || 'eventId' in body) {
-    invalid('The voice session supplies the action scope.')
-  }
-  const globalCommand = body.kind === 'request_help' || body.kind === 'availability_update'
-  if (globalCommand === Boolean(ticket.requestId)) conflict('Start a voice session for the action you want to take.')
-  const command = parseCommand({ ...body, requestId: ticket.requestId ?? undefined, offerId: ticket.offerId ?? undefined })
-  const actor = { id: ticket.memberId, crewId: ticket.member.crewId }
-  const recorded = await crewTransaction(db, actor.crewId, (tx) => recordCommand(tx, actor, `voice:${ticket.id}`, command))
-  return { actor, command, recorded }
+  const actor = { id: lookup.memberId, crewId: lookup.member.crewId }
+  return crewTransaction(db, actor.crewId, async (tx) => {
+    const ticket = await tx.crewVoiceTicket.findUnique({
+      where: { id: lookup.id },
+      include: { member: { select: { sessionHash: true } }, phoneCall: { select: { status: true } } },
+    })
+    // An answered call may reach the authenticated tool before its dial response.
+    const firstPhoneReply = ticket?.phoneCall?.status === 'dialing' && ticket.conversationId === null
+    if (!ticket || +ticket.expiresAt <= Date.now() ||
+        (!firstPhoneReply && ticket.conversationId !== conversationId) ||
+        (!ticket.phoneCall && !ticket.member.sessionHash)) {
+      throw new CrewError(401, 'unauthorized', 'This voice session is invalid or has expired.')
+    }
+    if ('requestId' in body || 'offerId' in body || 'memberId' in body || 'eventId' in body) {
+      invalid('The voice session supplies the action scope.')
+    }
+    if (ticket.phoneCall && body.kind !== 'accept' && body.kind !== 'decline') {
+      conflict('Answer this handoff with an acceptance or a decline.')
+    }
+    const globalCommand = body.kind === 'request_help' || body.kind === 'availability_update'
+    if (globalCommand === Boolean(ticket.requestId)) conflict('Start a voice session for the action you want to take.')
+    if (firstPhoneReply) await tx.crewVoiceTicket.update({ where: { id: ticket.id }, data: { conversationId } })
+    const command = parseCommand({ ...body, requestId: ticket.requestId ?? undefined, offerId: ticket.offerId ?? undefined })
+    const recorded = await recordCommand(tx, actor, `voice:${ticket.id}`, command)
+    return { actor, command, recorded }
+  })
 }

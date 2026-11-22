@@ -11,7 +11,8 @@
     "react-router": "^8.0.1",
     "@elevenlabs/react": "1.23.1",
     "@prisma/client": "5.19.1",
-    "express": "~5.1.0"
+    "express": "~5.1.0",
+    "pg-boss": "^8.4.2"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

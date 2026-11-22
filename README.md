@@ -24,4 +24,8 @@ Open the [phone](http://localhost:3000/?crew=demo) or the [board](http://localho
 4. Open `/board?crew=demo` as `jo` on a laptop and `/?crew=demo` as `alex` and `maya` on two phones. Enter the profile codes directly if prompted. Keep both phone screens on Crew Radio. On the board, tap **Talk**, choose **Something new**, and ask for a USB-C to HDMI adapter in Room B. Wait for the agent to confirm the update and for an offer to appear on a phone and the board.
 5. On the phone with the offer, tap its voice reply and start the conversation. After Crew Radio reads the offer, say, “I can't leave my station. The spare is in the blue pouch by registration.” The board should show one decline and a new offer to the other phone with that pickup location. On the second phone, open its offer, say “I can take it,” and check that the board shows the new assignee. Use a fresh voice session to report delivery and another as Jo to confirm receipt.
 
-The teammate receives the offer inside Crew Radio. ElevenLabs reads the offer and takes the reply when the teammate opens the voice session. The board follows the persisted request, offer, and activity records.
+The board follows the persisted request, offer, and activity records.
+
+### Phone call demo
+
+Follow the [outbound phone setup](src/server/crew/README.md#outbound-phone-offers) and configure two available teammates. From the board as Jo, start **Talk** and ask for the same adapter. The teammates can leave Crew Radio closed. Pick up each incoming call and say “I can take it” on one phone. The board should assign the request to that teammate and close the other offer. For a second test, decline or leave both initial calls unanswered. Parrot should offer the request to another eligible configured teammate, or leave it open if none are available.

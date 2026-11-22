@@ -1,8 +1,13 @@
 import { prisma } from 'wasp/server'
 import type { MiddlewareConfigFn } from 'wasp/server'
+import { dialCrewOffers } from 'wasp/server/jobs'
 import { createCrewHandlers } from './http'
 
-const handlers = createCrewHandlers(prisma)
+const handlers = createCrewHandlers(prisma, {
+  async wakePhoneWorker() {
+    if (process.env.ELEVENLABS_PHONE_NUMBER_ID && process.env.CREW_PHONE_CONTACTS) await dialCrewOffers.submit({})
+  },
+})
 
 export const crewJoin = handlers.join
 export const crewFeed = handlers.feed

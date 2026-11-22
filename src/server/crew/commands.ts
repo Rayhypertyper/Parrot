@@ -88,13 +88,7 @@ async function changeAvailability(
       where: { recipientId: member.id, status: 'pending', releasedAt: null },
       include: { request: true },
     })
-    if (offer) {
-      await tx.crewOffer.update({
-        where: { id: offer.id }, data: { status: 'withdrawn', releasedAt: new Date() },
-      })
-      await reopen(tx, offer.request)
-      plan.push(offer.requestId)
-    }
+    if (offer && await releasePendingOffer(tx, offer, 'withdrawn')) plan.push(offer.requestId)
   }
   if (command.availability === 'available') {
     const open = await tx.crewRequest.findMany({
@@ -124,6 +118,10 @@ async function replyToOffer(
   if (command.kind === 'accept') {
     if (member.availability !== 'available' || member.id === request.requesterId) conflict(staleOffer)
     await tx.crewOffer.update({ where: { id: offer.id }, data: { status: 'accepted' } })
+    await tx.crewOffer.updateMany({
+      where: { requestId: request.id, status: 'pending', releasedAt: null },
+      data: { status: 'withdrawn', releasedAt: new Date() },
+    })
     await tx.crewRequest.update({
       where: { id: request.id },
       data: { status: 'in_progress', assigneeId: member.id, revision: { increment: 1 } },
@@ -131,16 +129,35 @@ async function replyToOffer(
     return { requestId: request.id, message: 'Handoff accepted.', summary: 'Accepted the handoff.', plan: [] }
   }
 
-  await tx.crewOffer.update({
-    where: { id: offer.id }, data: { status: 'declined', releasedAt: new Date() },
-  })
-  await reopen(tx, request, command.text, command.location)
+  const needsPlan = await releasePendingOffer(tx, offer, 'declined', command.text, command.location)
   return {
     requestId: request.id,
-    message: 'Decline recorded. The request is open for another teammate.',
+    message: needsPlan ? 'Decline recorded. The request is open for another teammate.' : 'Decline recorded.',
     summary: reportSummary('Declined the handoff.', command.text, command.location),
-    plan: [request.id],
+    plan: needsPlan ? [request.id] : [],
   }
+}
+
+export async function releasePendingOffer(
+  tx: CrewTransaction, offer: { id: string; request: CrewRequest }, status: 'declined' | 'withdrawn',
+  text?: string, location?: string,
+) {
+  const { request } = offer
+  await tx.crewOffer.update({ where: { id: offer.id }, data: { status, releasedAt: new Date() } })
+  const other = await tx.crewOffer.findFirst({
+    where: { requestId: request.id, status: 'pending', releasedAt: null }, select: { id: true },
+  })
+  if (!other) {
+    await reopen(tx, request, text, location)
+    return true
+  }
+  if (text || location) {
+    await tx.crewRequest.update({
+      where: { id: request.id },
+      data: { revision: { increment: 1 }, latestFact: text ?? location, pickupLocation: location },
+    })
+  }
+  return false
 }
 
 function reopen(tx: CrewTransaction, request: CrewRequest, text?: string, location?: string) {

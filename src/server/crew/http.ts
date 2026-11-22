@@ -27,15 +27,29 @@ function endpoint(handler: Handler) {
 
 export function createCrewHandlers(
   db: CrewDatabase,
-  { planner = maritimePlanner, voiceToken = getElevenLabsToken }: { planner?: Planner; voiceToken?: ElevenLabsToken } = {},
+  { planner = maritimePlanner, voiceToken = getElevenLabsToken, wakePhoneWorker }: {
+    planner?: Planner; voiceToken?: ElevenLabsToken; wakePhoneWorker?: () => Promise<void>
+  } = {},
 ) {
+  async function planAndNotify(actor: CrewActor, requestId: string, event?: Prisma.JsonValue, explicit = false) {
+    const plan = await planRequest(db, actor, requestId, planner, event, explicit)
+    if (plan.result === 'offered' && wakePhoneWorker) {
+      try {
+        await wakePhoneWorker()
+      } catch {
+        console.warn('Parrot will pick up queued phone offers on the next worker run', { requestId })
+      }
+    }
+    return plan
+  }
+
   async function finish(actor: CrewActor, command: CrewCommand, recorded: RecordedCommand) {
     const newEvent = command.kind === 'availability_update'
       ? JSON.parse(JSON.stringify(command)) as Prisma.JsonValue
       : undefined
     await Promise.all(recorded.plan.map(async (requestId) => {
       try {
-        await planRequest(db, actor, requestId, planner, newEvent)
+        await planAndNotify(actor, requestId, newEvent)
       } catch {
         console.warn('Could not refresh crew planning', { requestId })
       }
@@ -60,7 +74,7 @@ export function createCrewHandlers(
     retryPlan: endpoint(async (req) => {
       const actor = await getMember(db, req.get('authorization'))
       const requestId = required(bodyObject(req.body), 'requestId')
-      return planRequest(db, actor, requestId, planner, undefined, true)
+      return planAndNotify(actor, requestId, undefined, true)
     }),
     voiceSession: endpoint(async (req) => {
       const member = await getMember(db, req.get('authorization'))
