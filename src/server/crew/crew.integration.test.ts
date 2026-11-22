@@ -261,6 +261,7 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
 
   await t.test('planner timeout preserves a warehouse request and supports retry', async () => {
     const { jo, alex, maya } = await fixture()
+    assert.equal((await event(maya, { kind: 'availability_update', availability: 'busy' })).status, 200)
     stallNext = true
     const callsBefore = modelCalls
     const pending = event(jo, { kind: 'request_help', text: 'We need a cart at packing station 4.', location: 'packing station 4' })
@@ -278,6 +279,18 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     assert.equal((await event(alex, { kind: 'accept', offerId: offer.id })).status, 200)
     assert.equal((await event(jo, { kind: 'confirm_receipt', requestId })).status, 200)
     assert.equal((await feed(maya)).requests[0].status, 'done')
+  })
+
+  await t.test('a planner timeout still dispatches two offers for active available teammates', async () => {
+    const { jo, alex, maya } = await fixture()
+    stallNext = true
+    assert.equal((await event(jo, { kind: 'request_help', text: 'Bring the network cable to room B.' })).status, 200)
+    const [first] = (await feed(alex)).myOffers
+    const [second] = (await feed(maya)).myOffers
+    assert.ok(first.message.includes('network cable'))
+    assert.ok(second.message.includes('network cable'))
+    assert.equal(first.requestId, second.requestId)
+    assert.equal((await feed(jo)).requests[0].status, 'offered')
   })
 
   await t.test('a superseded planner reply cannot write an offer and double declines leave it open', async () => {

@@ -19,6 +19,10 @@ type PlanProposal = { action: 'wait' } | { action: 'offer'; offers: ProposedOffe
 
 export type Planner = (input: PlanInput) => Promise<unknown>
 
+function fallbackOffer(request: PlanInput['request'], memberId: string) {
+  return { memberId, message: `Can you take this handoff? ${request.title}` }
+}
+
 const messages: Record<RetryPlanResult['result'], string> = {
   offered: 'The handoff was offered.',
   waiting: 'The request is open. No teammate was offered the handoff.',
@@ -64,7 +68,7 @@ function readProposal(value: unknown, input: PlanInput): PlanProposal {
   // A legacy or single-recipient decision still gets a second eligible offer.
   const backup = input.maxOffers === 2 && offers.length === 1 && input.candidates.find(({ id }) => !seen.has(id))
   if (backup) offers.push({
-    memberId: backup.id, message: `Can you take this handoff? ${input.request.title}`, pickupLocation, destination,
+    ...fallbackOffer(input.request, backup.id), pickupLocation, destination,
   })
   return { action, offers }
 }
@@ -157,8 +161,13 @@ export async function planRequest(
     let proposal: PlanProposal | undefined
     try {
       proposal = readProposal(await planner(input), input)
-    } catch {
-      console.warn('Crew planner failed', { requestId, revision: input.revision })
+    } catch (error) {
+      if (input.maxOffers === 2 && error instanceof Error && error.name === 'TimeoutError') {
+        proposal = { action: 'offer', offers: input.candidates.slice(0, 2).map(({ id }) => fallbackOffer(input.request, id)) }
+        console.warn('Crew planner timed out. Offering the handoff to available teammates.', { requestId, revision: input.revision })
+      } else {
+        console.warn('Crew planner failed', { requestId, revision: input.revision })
+      }
     }
     const outcome = await crewTransaction(db, actor.crewId, async (tx) => {
       const request = await tx.crewRequest.findFirst({ where: { id: requestId, crewId: actor.crewId } })
@@ -206,11 +215,12 @@ export const maritimePlanner: Planner = async (input) => {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify(input),
-    signal: AbortSignal.timeout(22_000),
+    signal: AbortSignal.timeout(input.maxOffers === 2 ? 9_000 : 22_000),
     redirect: 'error',
   })
   if (!response.ok) {
     console.warn('Crew planner returned an HTTP error', { status: response.status })
+    if (response.status === 504) throw new DOMException('Crew planner timed out', 'TimeoutError')
     throw new Error('Planner refused the request')
   }
   return response.json()

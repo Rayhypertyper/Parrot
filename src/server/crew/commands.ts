@@ -138,7 +138,7 @@ async function replyToOffer(
   }
 }
 
-export async function releasePendingOffer(
+async function releasePendingOffer(
   tx: CrewTransaction, offer: { id: string; request: CrewRequest }, status: 'declined' | 'withdrawn',
   text?: string, location?: string,
 ) {
