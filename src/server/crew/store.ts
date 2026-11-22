@@ -1,0 +1,123 @@
+import { createHash, randomBytes } from 'node:crypto'
+import type { CrewMember as MemberRow, Prisma, PrismaClient } from '@prisma/client'
+import type {
+  CrewCommand, CrewEventResult, CrewFeed, CrewJoinInput, CrewMember, CrewSession,
+} from '../../shared/crew/index'
+import { conflict, CrewError, notFound } from './input'
+
+export type CrewDatabase = PrismaClient
+export type CrewTransaction = Prisma.TransactionClient
+export type CrewActor = Pick<MemberRow, 'id' | 'crewId'>
+
+export function secretToken(): string {
+  return randomBytes(32).toString('base64url')
+}
+
+export function tokenHash(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
+
+export function crewTransaction<T>(db: CrewDatabase, crewId: string, run: (tx: CrewTransaction) => Promise<T>): Promise<T> {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Crew" WHERE id = ${crewId} FOR UPDATE`
+    return run(tx)
+  }, { isolationLevel: 'ReadCommitted', maxWait: 5000, timeout: 10000 })
+}
+
+export async function joinCrew(db: CrewDatabase, input: CrewJoinInput): Promise<CrewSession> {
+  const crew = await db.crew.findUnique({ where: { code: input.crewCode.toLowerCase() } })
+  if (!crew) notFound('Crew code was not found.')
+  return crewTransaction(db, crew.id, async (tx) => {
+    const member = await tx.crewMember.findUnique({
+      where: { crewId_profileCode: { crewId: crew.id, profileCode: input.profileCode.toLowerCase() } },
+    })
+    if (!member) notFound('Choose a profile in this crew.')
+    if (member.sessionHash) throw new CrewError(409, 'profile_taken', 'That profile is already claimed. Choose another.')
+    const memberToken = secretToken()
+    await tx.crewMember.update({ where: { id: member.id }, data: { sessionHash: tokenHash(memberToken) } })
+    return { memberToken, memberId: member.id, crewId: crew.id }
+  })
+}
+
+export async function getMember(db: CrewDatabase, header: string | undefined): Promise<MemberRow> {
+  const token = /^Bearer ([\w-]{43})$/i.exec(header ?? '')?.[1]
+  const member = token && await db.crewMember.findUnique({ where: { sessionHash: tokenHash(token) } })
+  if (!member) throw new CrewError(401, 'unauthorized', 'Join the crew to continue.')
+  return member
+}
+
+const memberFields = { id: true, name: true, location: true, availability: true, skills: true } as const
+
+export async function getFeed(db: CrewDatabase, actor: CrewActor): Promise<CrewFeed> {
+  return db.$transaction(async (tx) => {
+    const members = await tx.crewMember.findMany({
+      where: { crewId: actor.crewId }, select: { ...memberFields, updatedAt: true }, orderBy: { name: 'asc' },
+    })
+    const requests = await tx.crewRequest.findMany({
+      where: { crewId: actor.crewId },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+    })
+    const myOffers = await tx.crewOffer.findMany({
+      where: { request: { crewId: actor.crewId }, recipientId: actor.id },
+      select: { id: true, requestId: true, recipientId: true, status: true, message: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 30,
+    })
+    const activity = await tx.crewActivity.findMany({
+      where: { crewId: actor.crewId },
+      select: { id: true, requestId: true, at: true, actorName: true, summary: true },
+      orderBy: [{ at: 'desc' }, { id: 'asc' }], take: 40,
+    })
+    const memberDtos: CrewMember[] = members.map(({ updatedAt: _updatedAt, ...member }) => member)
+    const me = memberDtos.find(({ id }) => id === actor.id)
+    if (!me) throw new CrewError(401, 'unauthorized', 'Join the crew to continue.')
+    const updatedAt = Math.max(
+      ...members.map((member) => +member.updatedAt),
+      +(requests[0]?.updatedAt ?? 0),
+      +(activity[0]?.at ?? 0),
+    )
+    const now = Date.now()
+    return {
+      me,
+      members: memberDtos,
+      requests: requests.map((request) => ({
+        id: request.id, title: request.title, requesterId: request.requesterId, status: request.status,
+        revision: request.revision, assigneeId: request.assigneeId, latestFact: request.latestFact,
+        pickupLocation: request.pickupLocation, destination: request.destination,
+        planningStatus: request.planningStatus === 'planning' && request.planStartedAt &&
+          now - +request.planStartedAt > 30_000 ? 'failed' : request.planningStatus,
+        updatedAt: request.updatedAt.toISOString(),
+      })),
+      myOffers,
+      activity: activity.map(({ at, ...item }) => ({ ...item, at: at.toISOString() })),
+      updatedAt: new Date(updatedAt).toISOString(),
+    }
+  }, { isolationLevel: 'RepeatableRead' })
+}
+
+export async function recordCommand(tx: CrewTransaction, actor: CrewActor, eventId: string, command: CrewCommand): Promise<CrewEventResult> {
+  const previous = await tx.crewEventRecord.findUnique({
+    where: { memberId_eventId: { memberId: actor.id, eventId } },
+  })
+  // Prisma's JSONB key order can differ from the order of the parsed command.
+  const serialized = JSON.parse(JSON.stringify(command)) as Prisma.InputJsonObject
+  if (previous) {
+    const same = JSON.stringify(previous.command, Object.keys(serialized).sort()) ===
+      JSON.stringify(serialized, Object.keys(serialized).sort()) &&
+      Object.keys(previous.command as object).length === Object.keys(serialized).length
+    if (!same) conflict('This event ID has already been used for another update.')
+    return { eventId, requestId: previous.requestId ?? undefined, result: 'applied', message: previous.message }
+  }
+  if (command.kind !== 'request_help') conflict('This action is unavailable.')
+  const member = await tx.crewMember.findUniqueOrThrow({ where: { id: actor.id } })
+  const request = await tx.crewRequest.create({
+    data: { crewId: actor.crewId, requesterId: actor.id, title: command.text, destination: command.location },
+  })
+  const message = 'Request recorded.'
+  await tx.crewEventRecord.create({
+    data: { eventId, memberId: actor.id, requestId: request.id, command: serialized, message },
+  })
+  await tx.crewActivity.create({
+    data: { crewId: actor.crewId, requestId: request.id, actorName: member.name, summary: command.text },
+  })
+  return { eventId, requestId: request.id, result: 'applied', message }
+}
