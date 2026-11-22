@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Geist:wght@400;500;600;700&display=swap");
 
 /* ---------- tokens ---------- */
 :root {
@@ -19,7 +19,9 @@
   --red-wash: #f6dfdb;
   --focus: #0e6f68;
 
+  --teal-bright: #14b8a6;
   --font: "Geist", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Archivo", "Geist", ui-sans-serif, system-ui, sans-serif;
   --r-offer: 20px;
   --r-ctl: 14px;
   --tap: 48px;
@@ -80,10 +82,33 @@
   white-space: nowrap;
 }
 .cr-wordmark {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--teal);
-  letter-spacing: 0.01em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-stretch: 118%;
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.cr-wordmark--lg {
+  gap: 12px;
+  font-size: 30px;
+}
+.cr-mark {
+  flex: none;
+  overflow: visible;
+}
+/* Display face: expanded grotesque for names and headings only. */
+.cr-display {
+  font-family: var(--font-display);
+  font-stretch: 108%;
+  font-weight: 760;
+  letter-spacing: -0.022em;
+  font-feature-settings: "ss01";
 }
 
 /* ---------- controls ---------- */
@@ -357,31 +382,97 @@
 }
 
 /* ---------- join ---------- */
-.cr-join,
-.cr-loading {
+.cr-join {
   min-height: 100dvh;
   display: grid;
-  place-items: start center;
-  padding: max(32px, 8vh) 16px 32px;
+  grid-template-rows: auto 1fr;
 }
-.cr-loading {
-  place-content: center;
-  text-align: center;
-  gap: 8px;
+.cr-join__bar {
+  padding: 18px 16px 0;
+}
+.cr-join__body {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 40px;
+  padding: max(28px, 6vh) 16px 40px;
 }
 .cr-join__panel {
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
+}
+.cr-join__form {
   display: grid;
   gap: 20px;
 }
 .cr-join__title {
-  font-size: 28px;
-  line-height: 1.15;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-top: -12px;
+  font-size: clamp(34px, 9.4vw, 46px);
+  line-height: 1;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
+.cr-join__lede {
+  margin-top: -8px;
+  color: var(--muted);
+  font-size: 16px;
+  max-width: 34ch;
+}
+.cr-loading {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+  padding: 16px;
+}
+
+/* crew code shown like a tuned channel */
+.cr-channel {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 4px 4px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+}
+.cr-channel__label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.cr-channel__code {
+  font-family: var(--font-display);
+  font-stretch: 112%;
+  font-weight: 700;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--teal-ink);
+}
+.cr-channel__change {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #ebe8df;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cr-channel__change:hover {
+  background: #e1ddd2;
+}
+.cr-input--code {
+  font-family: var(--font-display);
+  font-stretch: 110%;
+  font-weight: 650;
+  font-size: 19px;
+  letter-spacing: 0.01em;
+}
+
 .cr-profiles {
   border: 0;
   display: grid;
@@ -391,11 +482,12 @@
   margin-bottom: 8px;
 }
 .cr-profile {
+  position: relative;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 40px 1fr;
   column-gap: 12px;
   align-items: center;
-  min-height: 60px;
+  min-height: 64px;
   padding: 10px 14px;
   border: 1.5px solid var(--line);
   border-radius: var(--r-ctl);
@@ -403,10 +495,23 @@
   cursor: pointer;
 }
 .cr-profile input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.cr-profile__initial {
   grid-row: span 2;
-  width: 20px;
-  height: 20px;
-  accent-color: var(--teal);
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e8e5dc;
+  font-family: var(--font-display);
+  font-stretch: 115%;
+  font-weight: 800;
+  font-size: 17px;
+  color: var(--ink-2);
 }
 .cr-profile__name {
   font-weight: 600;
@@ -419,13 +524,17 @@
   border-color: var(--teal);
   background: var(--teal-wash);
 }
+.cr-profile:has(input:checked) .cr-profile__initial {
+  background: var(--teal);
+  color: #fff;
+}
 .cr-profile:has(input:focus-visible) {
   outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 .cr-profile.is-claimed {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.55;
 }
 .cr-join__foot {
   display: flex;
@@ -433,6 +542,68 @@
   align-items: center;
   font-size: 14px;
   color: var(--muted);
+}
+
+/* how it works: desktop only, beside the form */
+.cr-join__how {
+  display: none;
+}
+.cr-join__how-title {
+  font-size: 26px;
+  line-height: 1.08;
+  max-width: 16ch;
+}
+.cr-steps {
+  display: grid;
+  gap: 18px;
+  counter-reset: none;
+}
+.cr-steps li {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 14px;
+  align-items: start;
+  color: var(--ink-2);
+  max-width: 38ch;
+}
+.cr-steps strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.cr-steps__n {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  font-family: var(--font-display);
+  font-stretch: 112%;
+  font-weight: 750;
+  font-size: 15px;
+  color: var(--teal-ink);
+}
+
+@media (min-width: 960px) {
+  .cr-join__bar {
+    padding: 28px 48px 0;
+  }
+  .cr-join__body {
+    grid-template-columns: minmax(0, 460px) minmax(0, 400px);
+    justify-content: center;
+    align-items: start;
+    gap: 96px;
+    padding: 10vh 48px 48px;
+  }
+  .cr-join__how {
+    display: grid;
+    gap: 28px;
+    padding: 32px 0 0 48px;
+    border-left: 1.5px solid var(--line);
+  }
+  .cr-join__title {
+    font-size: 52px;
+  }
 }
 
 /* ---------- phone ---------- */
@@ -450,11 +621,18 @@
   gap: 12px;
   padding-top: 14px;
 }
+.cr-top__brand {
+  display: grid;
+  gap: 5px;
+  font: inherit;
+}
 .cr-top__name {
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
   line-height: 1.2;
+  padding-left: 32px;
+  overflow-wrap: anywhere;
 }
 .cr-top__right {
   display: flex;
@@ -754,8 +932,11 @@ button.cr-req.is-selected {
   color: var(--ink-2);
 }
 .cr-empty__title {
-  font-size: 18px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-stretch: 106%;
+  font-size: 19px;
+  font-weight: 720;
+  letter-spacing: -0.01em;
   color: var(--ink);
 }
 .cr-empty .cr-btn {
@@ -921,8 +1102,11 @@ button.cr-req.is-selected {
   justify-content: space-between;
 }
 .cr-sheet__title {
-  font-size: 19px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-stretch: 110%;
+  font-size: 20px;
+  font-weight: 760;
+  letter-spacing: -0.015em;
 }
 .cr-subjects {
   border: 0;
@@ -1057,15 +1241,15 @@ button.cr-req.is-selected {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 14px;
+  gap: 6px 14px;
 }
 .cr-board__crew .cr-wordmark {
   width: 100%;
+  margin-bottom: 2px;
 }
 .cr-board__name {
   font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.015em;
+  line-height: 1.1;
 }
 .cr-board__me {
   display: flex;
@@ -1135,9 +1319,11 @@ button.cr-req.is-selected {
   border: 1px solid var(--line);
 }
 .cr-detail__title {
-  font-size: 28px;
-  line-height: 1.2;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-stretch: 104%;
+  font-size: 30px;
+  line-height: 1.12;
+  font-weight: 740;
   letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
@@ -1223,9 +1409,6 @@ button.cr-req.is-selected {
     align-items: center;
     gap: 24px;
     padding: 14px 24px;
-  }
-  .cr-board__crew .cr-wordmark {
-    width: auto;
   }
   .cr-board__grid {
     grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.4fr);

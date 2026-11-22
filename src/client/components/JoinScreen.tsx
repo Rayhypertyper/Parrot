@@ -5,6 +5,7 @@ import { useCrew } from "../crew/CrewProvider";
 import { usingFixture } from "../crew/adapter";
 import { Button } from "../ui/primitives";
 import { IconShield } from "../ui/icons";
+import { Wordmark } from "../ui/Wordmark";
 
 function crewCodeFromUrl() {
   const p = new URLSearchParams(window.location.search);
@@ -45,7 +46,7 @@ export function JoinScreen() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.join({ crewCode, profileCode: profile.trim() });
+      const r = await api.join({ crewCode, profileCode: profile.trim().toLowerCase() });
       setSession({ ...r, crewCode });
     } catch (err) {
       setError(messageOf(err));
@@ -58,105 +59,161 @@ export function JoinScreen() {
     }
   };
 
-  if (!crewCode) {
-    return (
-      <main className="cr-join">
-        <form
-          className="cr-join__panel"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (codeDraft.trim()) setCrewCode(codeDraft.trim());
-          }}
-        >
-          <p className="cr-wordmark">Crew Radio</p>
-          <h1 className="cr-join__title">Join your crew</h1>
-          <label className="cr-field">
-            <span className="cr-field__label">Crew code</span>
-            <input
-              className="cr-input"
-              value={codeDraft}
-              onChange={(e) => setCodeDraft(e.target.value)}
-              autoCapitalize="none"
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
-            <span className="cr-field__hint">It's on the QR code or the link you were sent.</span>
-          </label>
-          <Button tone="primary" block type="submit">
-            Continue
-          </Button>
-        </form>
-      </main>
-    );
-  }
-
   return (
-    <main className="cr-join">
-      <form className="cr-join__panel" onSubmit={join} aria-describedby={error ? errId : undefined}>
-        <p className="cr-wordmark">Crew Radio</p>
-        <h1 className="cr-join__title">
-          {dir?.crewName ? `Join ${dir.crewName}` : "Join your crew"}
-        </h1>
+    <div className="cr-join">
+      <header className="cr-join__bar">
+        <Wordmark />
+      </header>
 
-        {dir === undefined && !error && <p className="cr-muted">Loading profiles…</p>}
-
-        {dir && (
-          <fieldset className="cr-profiles">
-            <legend className="cr-field__label">Who are you?</legend>
-            {dir.profiles.map((p) => (
-              <label
-                key={p.profileCode}
-                className={`cr-profile${p.claimed ? " is-claimed" : ""}`}
-              >
+      <main className="cr-join__body">
+        <section className="cr-join__panel" aria-labelledby="join-title">
+          {!crewCode ? (
+            <form
+              className="cr-join__form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (codeDraft.trim()) setCrewCode(codeDraft.trim());
+              }}
+            >
+              <h1 id="join-title" className="cr-display cr-join__title">
+                Tune in to your crew
+              </h1>
+              <p className="cr-join__lede">
+                Enter the crew code from the QR poster or the link your organizer sent.
+              </p>
+              <label className="cr-field">
+                <span className="cr-field__label">Crew code</span>
                 <input
-                  type="radio"
-                  name="profile"
-                  value={p.profileCode}
-                  checked={profile === p.profileCode}
-                  disabled={p.claimed}
-                  onChange={() => setProfile(p.profileCode)}
+                  className="cr-input cr-input--code"
+                  value={codeDraft}
+                  onChange={(e) => setCodeDraft(e.target.value)}
+                  autoCapitalize="none"
+                  autoComplete="off"
+                  spellCheck={false}
+                  required
                 />
-                <span className="cr-profile__name">{p.name}</span>
-                <span className="cr-profile__meta">
-                  {p.claimed ? "Already joined on another device" : p.skills.join(", ")}
-                </span>
               </label>
-            ))}
-          </fieldset>
-        )}
+              <Button tone="primary" block type="submit">
+                Continue
+              </Button>
+            </form>
+          ) : (
+            <form
+              className="cr-join__form"
+              onSubmit={join}
+              aria-describedby={error ? errId : undefined}
+            >
+              <div className="cr-channel">
+                <span className="cr-channel__label">Crew code</span>
+                <span className="cr-channel__code">{crewCode}</span>
+                <button type="button" className="cr-channel__change" onClick={() => setCrewCode("")}>
+                  Change
+                </button>
+              </div>
 
-        {dir === null && (
-          <label className="cr-field">
-            <span className="cr-field__label">Profile code</span>
-            <input
-              className="cr-input"
-              value={profile}
-              onChange={(e) => setProfile(e.target.value)}
-              autoCapitalize="none"
-              autoComplete="off"
-              required
-            />
-          </label>
-        )}
+              <h1 id="join-title" className="cr-display cr-join__title">
+                {dir?.crewName ? `Join ${dir.crewName}` : "Join your crew"}
+              </h1>
+              <p className="cr-join__lede">
+                {dir === null
+                  ? "Enter the profile code your organizer gave you. This device stays signed in until you leave."
+                  : "Choose who you are on this device. It stays signed in until you leave."}
+              </p>
 
-        {error && (
-          <p id={errId} className="cr-inline-alert" role="alert">
-            {error}
-          </p>
-        )}
+              {dir === undefined && !error && <p className="cr-muted">Loading profiles…</p>}
 
-        <Button tone="primary" block type="submit" busy={busy} busyLabel="Joining…" disabled={!profile}>
-          Join
-        </Button>
+              {dir && (
+                <fieldset className="cr-profiles">
+                  <legend className="cr-field__label">Who are you?</legend>
+                  {dir.profiles.map((p) => (
+                    <label
+                      key={p.profileCode}
+                      className={`cr-profile${p.claimed ? " is-claimed" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="profile"
+                        value={p.profileCode}
+                        checked={profile === p.profileCode}
+                        disabled={p.claimed}
+                        onChange={() => setProfile(p.profileCode)}
+                      />
+                      <span className="cr-profile__initial" aria-hidden="true">
+                        {p.name.slice(0, 1)}
+                      </span>
+                      <span className="cr-profile__name">{p.name}</span>
+                      <span className="cr-profile__meta">
+                        {p.claimed ? "Already joined on another device" : p.skills.join(", ")}
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+              )}
 
-        <p className="cr-join__foot">
-          <IconShield size={15} /> Your microphone is only used after you tap Talk.
-        </p>
-        <button type="button" className="cr-link" onClick={() => setCrewCode("")}>
-          Use a different crew code
-        </button>
-      </form>
-    </main>
+              {dir === null && (
+                <label className="cr-field">
+                  <span className="cr-field__label">Your profile code</span>
+                  <input
+                    className="cr-input cr-input--code"
+                    value={profile}
+                    onChange={(e) => setProfile(e.target.value)}
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    spellCheck={false}
+                    required
+                  />
+                </label>
+              )}
+
+              {error && (
+                <p id={errId} className="cr-inline-alert" role="alert">
+                  {error}
+                </p>
+              )}
+
+              <Button
+                tone="primary"
+                block
+                type="submit"
+                busy={busy}
+                busyLabel="Joining…"
+                disabled={!profile.trim()}
+              >
+                Join
+              </Button>
+
+              <p className="cr-join__foot">
+                <IconShield size={15} /> Your microphone stays off until you tap Talk.
+              </p>
+            </form>
+          )}
+        </section>
+
+        <aside className="cr-join__how" aria-label="How Crew Radio works">
+          <p className="cr-display cr-join__how-title">One radio for the whole crew</p>
+          <ol className="cr-steps">
+            <li>
+              <span className="cr-steps__n">1</span>
+              <span>
+                <strong>Ask out loud or type it.</strong> Say what you need and where.
+              </span>
+            </li>
+            <li>
+              <span className="cr-steps__n">2</span>
+              <span>
+                <strong>The right person gets the offer.</strong> Declines carry new details to
+                the next teammate.
+              </span>
+            </li>
+            <li>
+              <span className="cr-steps__n">3</span>
+              <span>
+                <strong>Delivered, then confirmed.</strong> Every screen shows who has it.
+              </span>
+            </li>
+          </ol>
+        </aside>
+      </main>
+    </div>
   );
 }

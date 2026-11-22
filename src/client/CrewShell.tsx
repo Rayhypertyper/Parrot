@@ -5,6 +5,7 @@ import { CrewProvider, useCrew } from "./crew/CrewProvider";
 import type { Feed } from "./crew/contract";
 import { JoinScreen } from "./components/JoinScreen";
 import { VoiceProvider } from "./voice/VoiceProvider";
+import { Wordmark } from "./ui/Wordmark";
 
 /** Shared providers + session gate for both page routes. */
 export function CrewShell({ children }: { children: (feed: Feed) => ReactNode }) {
@@ -26,7 +27,7 @@ function Gate({ children }: { children: (feed: Feed) => ReactNode }) {
   if (!feed)
     return (
       <main className="cr-loading" aria-busy="true">
-        <p className="cr-wordmark">Crew Radio</p>
+        <Wordmark size="lg" />
         <p className="cr-muted">
           {link === "offline" ? "Can't reach the crew server. Retrying…" : "Loading your crew…"}
         </p>
