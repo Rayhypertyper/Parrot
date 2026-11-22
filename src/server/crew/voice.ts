@@ -76,23 +76,38 @@ export async function startVoiceSession(
     })
     return context
   })
+  const name = speechText(member.name) || 'there'
+  const offerMessage = speechText(offer?.message)
+  const destination = speechText(request?.destination)
+  const pickup = speechText(request?.pickupLocation)
+  const openingMessage = offer?.status === 'pending'
+    ? offerMessage || 'Can you take this handoff?'
+    : 'What would you like to tell the crew?'
+
   return {
     conversationToken: token,
     dynamicVariables: {
       secret__crew_ticket: ticket,
-      member_name: member.name,
-      opening_message: offer?.status === 'pending'
-        ? `Hi ${member.name}. ${offer.message}`
-        : `Hi ${member.name}. What would you like to tell the crew?`,
-      offer_context: offer?.message ?? '',
+      member_name: name,
+      opening_message: `Hi ${name}. ${openingMessage}`,
+      offer_context: offerMessage,
       request_context: request ? [
-        request.title, request.destination && `Destination: ${request.destination}`,
-        request.pickupLocation && `Pickup: ${request.pickupLocation}`, request.latestFact,
+        speechText(request.title), destination && `Destination: ${destination}`,
+        pickup && `Pickup: ${pickup}`, speechText(request.latestFact),
         `Status: ${request.status}`,
         request.requesterId === member.id ? 'You are speaking with the requester.' : 'You are speaking with the offer recipient.',
       ].filter(Boolean).join('\n') : '',
     },
   }
+}
+
+function speechText(value: string | null | undefined): string {
+  return (value ?? '')
+    .replace(/(?:\b(?:(?:crew|worker|member|request|offer|handoff|recipient|assignee|conversation|event)[ _-]*)?id\s*[:=#]?\s*)?\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi, '')
+    .replace(/\([\s,;]*\)|\[[\s,;]*\]/g, '')
+    .replace(/[ \t]+([,.!?])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
 }
 
 export function authorizeVoiceTool(header: string | undefined) {
