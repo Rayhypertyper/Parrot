@@ -1,84 +1,46 @@
-// Client-side mirror of the shared contract in docs/crew-radio-plan.md §4.
-// When Agent A publishes src/shared/crew, re-export those types from here
-// so the rest of src/client keeps importing from "./contract".
+// The client's view of Agent A's contract in src/shared/crew. Types come from
+// there; the aliases keep component code short. Only the join directory below
+// is client-side, pending A's route.
+import type {
+  CrewActivity,
+  CrewCommand,
+  CrewFeed,
+  CrewJoinInput,
+  CrewMember,
+  CrewOffer,
+  CrewSession,
+  VoiceSessionInput,
+  VoiceSessionResult,
+} from "../../shared/crew/index";
 
-export type Availability = "available" | "busy" | "protected";
+export type {
+  Availability,
+  CrewErrorResponse,
+  CrewEventResult,
+  CrewRequest,
+  OfferStatus,
+  PlanningStatus,
+  RequestStatus,
+  RetryPlanResult,
+} from "../../shared/crew/index";
+export { crewRoutes } from "../../shared/crew/index";
 
-export type RequestStatus =
-  | "open"
-  | "offered"
-  | "in_progress"
-  | "awaiting_confirmation"
-  | "done";
+export type Member = CrewMember;
+export type Offer = CrewOffer;
+export type ActivityItem = CrewActivity;
+export type JoinBody = CrewJoinInput;
+export type JoinResult = CrewSession;
+export type VoiceSessionBody = VoiceSessionInput;
+export type VoiceSession = VoiceSessionResult;
+export type EventKind = CrewCommand["kind"];
 
-export type OfferStatus = "pending" | "accepted" | "declined" | "withdrawn";
+/** Feed plus an optional crew name, shown in the header when A adds it. */
+export type Feed = CrewFeed & { crewName?: string };
 
-export type EventKind =
-  | "request_help"
-  | "availability_update"
-  | "accept"
-  | "decline"
-  | "blocked"
-  | "report_delivery"
-  | "confirm_receipt";
-
-export interface Member {
-  id: string;
-  name: string;
-  location: string | null;
-  availability: Availability;
-  skills: string[];
-}
-
-export interface CrewRequest {
-  id: string;
-  title: string;
-  requesterId: string;
-  status: RequestStatus;
-  revision: number;
-  assigneeId: string | null;
-  latestFact: string | null;
-  updatedAt: string;
-}
-
-export interface Offer {
-  id: string;
-  requestId: string;
-  recipientId: string;
-  status: OfferStatus;
-  message: string;
-}
-
-export interface ActivityItem {
-  id: string;
-  requestId: string | null;
-  at: string;
-  actorName: string;
-  summary: string;
-}
-
-export interface Feed {
-  me: Member;
-  members: Member[];
-  requests: CrewRequest[];
-  myOffers: Offer[];
-  activity: ActivityItem[];
-  updatedAt: string;
-  // Optional until A confirms the field; shown in the header when present.
-  crewName?: string;
-}
-
-export interface JoinBody {
-  crewCode: string;
-  profileCode: string;
-}
-
-export interface JoinResult {
-  memberToken: string;
-  memberId: string;
-  crewId: string;
-}
-
+/**
+ * One loose shape for every tap action. The server validates the kind-specific
+ * fields (see CrewCommand); the UI only sends what each control collects.
+ */
 export interface CrewEventBody {
   eventId: string;
   kind: EventKind;
@@ -86,28 +48,11 @@ export interface CrewEventBody {
   offerId?: string;
   text?: string;
   location?: string;
-  availability?: Availability;
+  availability?: "available" | "busy";
 }
 
-export interface CrewEventResult {
-  eventId: string;
-  requestId?: string;
-  result: string;
-  message: string;
-}
-
-export interface VoiceSessionBody {
-  requestId?: string;
-  offerId?: string;
-}
-
-export interface VoiceSession {
-  conversationToken: string;
-  dynamicVariables: Record<string, string | number | boolean>;
-}
-
-// Route request to Agent A: the join screen needs the crew name and which
-// profiles are unclaimed. Until it exists the UI falls back to a typed code.
+// Route request to Agent A: GET /crew/profiles?crewCode=… so the join screen
+// can list unclaimed profiles. Until it exists the UI falls back to a typed code.
 export interface JoinProfile {
   profileCode: string;
   name: string;

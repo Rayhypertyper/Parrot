@@ -10,12 +10,7 @@ import {
 } from "react";
 import { CrewApiError, messageOf, type CrewApi } from "./api";
 import { getCrewApi } from "./adapter";
-import type {
-  Availability,
-  CrewEventResult,
-  EventKind,
-  Feed,
-} from "./contract";
+import type { CrewEventResult, EventKind, Feed } from "./contract";
 import {
   clearIntent,
   clearSession,
@@ -42,7 +37,7 @@ export interface ActInput {
   offerId?: string;
   text?: string;
   location?: string;
-  availability?: Availability;
+  availability?: "available" | "busy";
 }
 
 interface CrewContextValue {
@@ -202,7 +197,7 @@ export function CrewProvider({ children }: { children: ReactNode }) {
       setPending((p) => ({ ...p, [key]: true }));
       try {
         const r = await api.retryPlan(s.memberToken, requestId);
-        say({ tone: "ok", text: r.message });
+        say({ tone: r.result === "failed" || r.result === "waiting" ? "warn" : "ok", text: r.message });
         await refresh();
       } catch (err) {
         say({ tone: err instanceof CrewApiError && err.isStale ? "warn" : "error", text: messageOf(err) });

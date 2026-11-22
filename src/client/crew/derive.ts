@@ -53,7 +53,7 @@ export function nextStepFor(feed: Feed, r: CrewRequest): NextStep {
   if (r.requesterId === me) {
     if (r.status === "in_progress" || r.status === "awaiting_confirmation")
       return { kind: "confirm_receipt" };
-    if (r.status === "open") return { kind: "retry_plan" };
+    if (r.status === "open" && r.planningStatus !== "planning") return { kind: "retry_plan" };
     if (r.status === "offered") return { kind: "wait", text: "Waiting for a reply to the offer" };
     return { kind: "none" };
   }

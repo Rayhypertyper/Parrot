@@ -1,11 +1,13 @@
 import { config } from "wasp/client";
 import { CrewApiError, type CrewApi } from "./api";
-import type {
-  CrewDirectory,
-  CrewEventResult,
-  Feed,
-  JoinResult,
-  VoiceSession,
+import {
+  crewRoutes,
+  type CrewDirectory,
+  type CrewEventResult,
+  type Feed,
+  type JoinResult,
+  type RetryPlanResult,
+  type VoiceSession,
 } from "./contract";
 
 const base = () => config.apiUrl.replace(/\/$/, "");
@@ -64,20 +66,20 @@ export const httpAdapter: CrewApi = {
     }
   },
 
-  join: (body) => call<JoinResult>("/crew/join", { method: "POST", body }),
+  join: (body) => call<JoinResult>(crewRoutes.join, { method: "POST", body }),
 
-  feed: (token) => call<Feed>("/crew/feed", { token }),
+  feed: (token) => call<Feed>(crewRoutes.feed, { token }),
 
   sendEvent: (token, body) =>
-    call<CrewEventResult>("/crew/events", { method: "POST", token, body }),
+    call<CrewEventResult>(crewRoutes.events, { method: "POST", token, body }),
 
   retryPlan: (token, requestId) =>
-    call<CrewEventResult>("/crew/retry-plan", {
+    call<RetryPlanResult>(crewRoutes.retryPlan, {
       method: "POST",
       token,
       body: { requestId },
     }),
 
   voiceSession: (token, body) =>
-    call<VoiceSession>("/crew/voice-session", { method: "POST", token, body }),
+    call<VoiceSession>(crewRoutes.voiceSession, { method: "POST", token, body }),
 };

@@ -29,15 +29,18 @@ The HTTP adapter calls custom routes at `config.apiUrl` from `wasp/client`, with
 The join screen needs this to list unclaimed profiles. If it returns 404, the
 UI falls back to a typed profile code.
 
-**Contract details to confirm with A**
-- `Feed.crewName` (optional). The header shows "Your crew" without it.
-- Error bodies: the UI shows `message` (or `error`) from any non-2xx JSON
-  response. Status codes it handles: 401 clears the session and returns to
-  join; 409 shows the message and refetches the feed.
-- `CrewEventResult.message` is shown verbatim after each tap action.
-- `POST /crew/retry-plan` reuses the `CrewEventResult` shape.
-- Once A publishes `src/shared/crew`, `crew/contract.ts` should re-export those
-  types instead of keeping its own copy.
+**Contract**
+- Types and paths come from A's `src/shared/crew` via `crew/contract.ts`.
+- The offer, handoff card and board show `pickupLocation` ("Pick up at") and
+  `destination` ("Bring to", falling back to the requester's location), plus
+  `latestFact` as the crew's own words.
+- `planningStatus` drives the open-request line: planning → "Looking for help",
+  waiting → "No one available to ask yet", failed → "Couldn't plan a handoff".
+  The requester's "Ask the crew again" is hidden while planning.
+- Decline and "I'm blocked" have an optional pickup field sent as `location`.
+- Errors show the `message` from `{ code, message }`. 401 returns to join; 409
+  shows the message and refetches the feed.
+- Optional ask: `crewName` on the feed. The header shows "Your crew" without it.
 
 **Dependency request to the release lead**
 - `@elevenlabs/react@1.23.1` (pins `@elevenlabs/client@1.37.1`). The code uses

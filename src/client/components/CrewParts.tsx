@@ -97,6 +97,7 @@ export function OfferCard({
   const voice = useVoice();
   const [declining, setDeclining] = useState(false);
   const [note, setNote] = useState("");
+  const [pickup, setPickup] = useState("");
   const requester = memberById(feed, request.requesterId);
   const acceptKey = intentKey({ kind: "accept", offerId: offer.id });
   const declineKey = intentKey({ kind: "decline", offerId: offer.id });
@@ -109,24 +110,7 @@ export function OfferCard({
       </p>
       <ClampedText className="cr-offer__message" text={offer.message} />
 
-      <dl className="cr-facts">
-        {request.latestFact && (
-          <div className="cr-fact cr-fact--new">
-            <dt>
-              <IconPin size={18} /> Latest detail
-            </dt>
-            <dd>{request.latestFact}</dd>
-          </div>
-        )}
-        {requester?.location && (
-          <div className="cr-fact">
-            <dt>
-              <IconFlag size={18} /> {requester.name} is at
-            </dt>
-            <dd>{requester.location}</dd>
-          </div>
-        )}
-      </dl>
+      <Places feed={feed} request={request} />
 
       {!declining ? (
         <div className="cr-offer__actions">
@@ -153,6 +137,7 @@ export function OfferCard({
               requestId: request.id,
               offerId: offer.id,
               text: note.trim() || undefined,
+              location: pickup.trim() || undefined,
             });
             if (r) setDeclining(false);
           }}
@@ -164,10 +149,11 @@ export function OfferCard({
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Where it is, or why you can't go"
+              placeholder="Why you can't go, or where it is"
               autoFocus
             />
           </label>
+          <PickupField value={pickup} onChange={setPickup} />
           <div className="cr-offer__actions">
             <Button tone="primary" type="submit" busy={pending[declineKey]} busyLabel="Declining…">
               Decline
@@ -193,6 +179,100 @@ export function OfferCard({
       </button>
     </section>
   );
+}
+
+/** Where to collect and where to bring, plus the newest words from the crew. */
+export function Places({
+  feed,
+  request,
+  compact,
+}: {
+  feed: Feed;
+  request: CrewRequest;
+  compact?: boolean;
+}) {
+  const requester = memberById(feed, request.requesterId);
+  const destination = request.destination ?? requester?.location ?? null;
+  const fact = request.latestFact;
+  const factIsPickup = fact && request.pickupLocation && fact.trim() === request.pickupLocation.trim();
+  const icon = compact ? 16 : 18;
+  return (
+    <dl className={`cr-facts${compact ? " cr-facts--places" : ""}`}>
+      {request.pickupLocation && (
+        <div className="cr-fact cr-fact--new">
+          <dt>
+            <IconPin size={icon} /> Pick up at
+          </dt>
+          <dd className="cr-fact__place">{request.pickupLocation}</dd>
+          {fact && !factIsPickup && <dd className="cr-fact__said">“{fact}”</dd>}
+        </div>
+      )}
+      {!request.pickupLocation && fact && (
+        <div className="cr-fact cr-fact--new">
+          <dt>
+            <IconPin size={icon} /> Latest detail
+          </dt>
+          <dd>{fact}</dd>
+        </div>
+      )}
+      {destination && (
+        <div className="cr-fact">
+          <dt>
+            <IconFlag size={icon} /> Bring to
+          </dt>
+          <dd className="cr-fact__place">{destination}</dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+function PickupField({
+  value,
+  onChange,
+  label = "Where can they pick it up? (optional)",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  label?: string;
+}) {
+  return (
+    <label className="cr-field">
+      <span className="cr-field__label">{label}</span>
+      <input
+        className="cr-input"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Exact spot, in your words"
+        autoComplete="off"
+      />
+    </label>
+  );
+}
+
+/** Shows the planner's real state for an open request; nothing is invented. */
+export function PlanningNote({ request }: { request: CrewRequest }) {
+  if (request.status !== "open") return null;
+  const s = request.planningStatus;
+  if (s === "planning")
+    return (
+      <span className="cr-planning">
+        <span className="cr-planning__dot" aria-hidden="true" /> Looking for help
+      </span>
+    );
+  if (s === "waiting")
+    return (
+      <span className="cr-planning cr-planning--warn">
+        <IconAlert size={16} /> No one available to ask yet
+      </span>
+    );
+  if (s === "failed")
+    return (
+      <span className="cr-planning cr-planning--warn">
+        <IconAlert size={16} /> Couldn't plan a handoff. Ask the crew again.
+      </span>
+    );
+  return null;
 }
 
 /** Long instructions stay a few lines tall so Accept stays in reach; full text on tap. */
@@ -232,6 +312,7 @@ export function HandoffActions({
   const { act, retryPlan, pending } = useCrew();
   const [blocking, setBlocking] = useState(false);
   const [note, setNote] = useState("");
+  const [pickup, setPickup] = useState("");
   const step = nextStepFor(feed, request);
   const k = (kind: Parameters<typeof intentKey>[0]["kind"]) =>
     pending[intentKey({ kind, requestId: request.id })];
@@ -242,7 +323,12 @@ export function HandoffActions({
         className="cr-decline"
         onSubmit={async (e) => {
           e.preventDefault();
-          const r = await act({ kind: "blocked", requestId: request.id, text: note.trim() || undefined });
+          const r = await act({
+            kind: "blocked",
+            requestId: request.id,
+            text: note.trim() || undefined,
+            location: pickup.trim() || undefined,
+          });
           if (r) {
             setBlocking(false);
             onDone?.();
@@ -259,6 +345,7 @@ export function HandoffActions({
             autoFocus
           />
         </label>
+        <PickupField value={pickup} onChange={setPickup} label="Where is it now? (optional)" />
         <div className="cr-actions">
           <Button tone="danger" type="submit" busy={k("blocked")} busyLabel="Releasing…">
             Release this handoff
@@ -330,27 +417,18 @@ export function HandoffCard({ feed, request }: { feed: Feed; request: CrewReques
         <span className="cr-time">{ago(request.updatedAt)}</span>
       </div>
       <h3 className="cr-handoff__title">{request.title}</h3>
+      <Places feed={feed} request={request} compact />
       <dl className="cr-facts cr-facts--compact">
-        {request.latestFact && (
-          <div className="cr-fact cr-fact--new">
-            <dt>
-              <IconPin size={16} /> Latest detail
-            </dt>
-            <dd>{request.latestFact}</dd>
-          </div>
-        )}
         <div className="cr-fact">
           <dt>Requested by</dt>
-          <dd>
-            {requester?.id === feed.me.id ? "You" : requester?.name}
-            {requester?.location ? `, at ${requester.location}` : ""}
-          </dd>
+          <dd>{requester?.id === feed.me.id ? "You" : requester?.name}</dd>
         </div>
         <div className="cr-fact">
           <dt>Responsible</dt>
           <dd>{mine ? "You" : assignee?.name ?? "No one yet"}</dd>
         </div>
       </dl>
+      <PlanningNote request={request} />
       <HandoffActions feed={feed} request={request} />
     </article>
   );
@@ -386,6 +464,7 @@ export function RequestSummary({
         {requester?.id === feed.me.id ? "You asked" : `${requester?.name ?? "Someone"} asked`}
         {owner ? `. ${owner === feed.me.name ? "You're" : `${owner} is`} responsible` : ""}
       </span>
+      <PlanningNote request={request} />
     </>
   );
   if (onSelect)

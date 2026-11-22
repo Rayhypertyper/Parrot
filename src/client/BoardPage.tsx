@@ -12,11 +12,13 @@ import {
   LinkStatus,
   NoticeBar,
   OfferCard,
+  Places,
+  PlanningNote,
   RequestHistory,
   RequestSummary,
 } from "./components/CrewParts";
 import { StatusBadge } from "./ui/primitives";
-import { IconFlag, IconPhone, IconPin } from "./ui/icons";
+import { IconPhone } from "./ui/icons";
 import { TalkKey } from "./voice/TalkKey";
 import { useVoice } from "./voice/VoiceProvider";
 import { VoiceSheet } from "./voice/VoiceSheet";
@@ -120,30 +122,18 @@ function Board({ feed }: { feed: Feed }) {
                 <div>
                   <dt>Responsible</dt>
                   <dd className="cr-detail__owner">
-                    {memberById(feed, selected.assigneeId)?.name ??
-                      (selected.status === "offered" ? "Waiting for a reply" : "No one yet")}
+                    {memberById(feed, selected.assigneeId)?.name ?? "No one yet"}
                   </dd>
                 </div>
                 <div>
                   <dt>Requested by</dt>
-                  <dd>
-                    {memberById(feed, selected.requesterId)?.name}
-                    {memberById(feed, selected.requesterId)?.location && (
-                      <span className="cr-detail__loc">
-                        <IconFlag size={16} /> {memberById(feed, selected.requesterId)?.location}
-                      </span>
-                    )}
-                  </dd>
+                  <dd>{memberById(feed, selected.requesterId)?.name}</dd>
                 </div>
-                {selected.latestFact && (
-                  <div className="cr-detail__fact">
-                    <dt>
-                      <IconPin size={16} /> Latest detail
-                    </dt>
-                    <dd>{selected.latestFact}</dd>
-                  </div>
-                )}
               </dl>
+              <div className="cr-detail__places">
+                <Places feed={feed} request={selected} />
+              </div>
+              <PlanningNote request={selected} />
               <HandoffActions feed={feed} request={selected} />
               <h3 className="cr-pane__sub">History</h3>
               <RequestHistory feed={feed} request={selected} />

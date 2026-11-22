@@ -5,6 +5,7 @@ import type {
   Feed,
   JoinBody,
   JoinResult,
+  RetryPlanResult,
   VoiceSession,
   VoiceSessionBody,
 } from "./contract";
@@ -16,7 +17,7 @@ export interface CrewApi {
   join(body: JoinBody): Promise<JoinResult>;
   feed(token: string): Promise<Feed>;
   sendEvent(token: string, body: CrewEventBody): Promise<CrewEventResult>;
-  retryPlan(token: string, requestId: string): Promise<CrewEventResult>;
+  retryPlan(token: string, requestId: string): Promise<RetryPlanResult>;
   voiceSession(token: string, body: VoiceSessionBody): Promise<VoiceSession>;
 }
 

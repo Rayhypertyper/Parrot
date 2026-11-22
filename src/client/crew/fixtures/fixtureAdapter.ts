@@ -14,7 +14,7 @@ import type {
 } from "../contract";
 import { FIXTURE_CREW, FIXTURE_MEMBERS } from "./seed";
 
-const KEY = "crew-radio:fixture-db:v1";
+const KEY = "crew-radio:fixture-db:v2";
 
 interface Db {
   members: (Member & { profileCode: string })[];
@@ -103,13 +103,14 @@ function plan(db: Db, requestId: string) {
     pool.find((m) => wantsAv && m.skills.includes("AV")) ?? pool[0] ?? null;
   const requester = db.members.find((m) => m.id === r.requesterId)!;
   if (!pick) {
+    r.planningStatus = "waiting";
     log(db, "Crew Radio", "No available teammate to ask yet", r.id);
     touch(r);
     return;
   }
-  const detail = r.latestFact ? ` ${r.latestFact}` : "";
-  const message = r.latestFact
-    ? `${requester.name} needs help: ${r.title}.${detail} Can you pick it up and bring it to ${requester.location ?? "them"}?`
+  const to = r.destination ?? requester.location;
+  const message = r.pickupLocation
+    ? `Can you pick it up from ${r.pickupLocation} and bring it to ${to}? ${requester.name} needs: ${r.title}.`
     : `${requester.name} needs help: ${r.title}. Can you help?`;
   db.offers.push({
     id: id(db, "o"),
@@ -119,6 +120,7 @@ function plan(db: Db, requestId: string) {
     message,
   });
   r.status = "offered";
+  r.planningStatus = "idle";
   touch(r);
   log(db, "Crew Radio", `Asked ${pick.name} to help`, r.id);
 }
@@ -139,7 +141,7 @@ function apply(db: Db, me: Member, body: CrewEventBody): CrewEventResult {
   const ok = (message: string, requestId?: string): CrewEventResult => ({
     eventId: body.eventId,
     requestId,
-    result: "ok",
+    result: "applied",
     message,
   });
   const req = body.requestId
@@ -161,6 +163,9 @@ function apply(db: Db, me: Member, body: CrewEventBody): CrewEventResult {
         revision: 1,
         assigneeId: null,
         latestFact: null,
+        pickupLocation: null,
+        destination: body.location?.trim() || me.location,
+        planningStatus: "planning",
         updatedAt: now(),
       };
       db.requests.unshift(r);
@@ -196,6 +201,8 @@ function apply(db: Db, me: Member, body: CrewEventBody): CrewEventResult {
       db.declined[req.id] = [...(db.declined[req.id] ?? []), me.id];
       req.status = "open";
       if (body.text?.trim()) req.latestFact = body.text.trim();
+      if (body.location?.trim()) req.pickupLocation = body.location.trim();
+      req.planningStatus = "planning";
       touch(req);
       log(
         db,
@@ -212,6 +219,8 @@ function apply(db: Db, me: Member, body: CrewEventBody): CrewEventResult {
       req.status = "open";
       req.assigneeId = null;
       if (body.text?.trim()) req.latestFact = body.text.trim();
+      if (body.location?.trim()) req.pickupLocation = body.location.trim();
+      req.planningStatus = "planning";
       db.declined[req.id] = [...(db.declined[req.id] ?? []), me.id];
       touch(req);
       log(db, me.name, body.text?.trim() ? `Blocked: "${body.text.trim()}"` : "Blocked", req.id);
@@ -323,13 +332,12 @@ export const fixtureAdapter: CrewApi = {
     const r = db.requests.find((x) => x.id === requestId);
     if (!r || r.status !== "open")
       throw stale("This request isn't open any more.");
+    if (r.planningStatus === "planning")
+      return { requestId, result: "planning", message: "Already looking for help." };
+    r.planningStatus = "planning";
+    save(db);
     schedulePlan(r.id);
-    return {
-      eventId: `retry-${requestId}`,
-      requestId,
-      result: "planning",
-      message: "Looking for help.",
-    };
+    return { requestId, result: "planning", message: "Looking for help." };
   },
 
   async voiceSession(token) {

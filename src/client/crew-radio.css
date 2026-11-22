@@ -552,6 +552,41 @@
   font-size: 17px;
   font-weight: 500;
 }
+.cr-fact__place {
+  font-size: 17px;
+  font-weight: 600;
+}
+.cr-fact--new .cr-fact__place {
+  font-size: 18px;
+}
+.cr-fact__said {
+  margin-top: 4px;
+  font-size: 15px;
+  color: var(--ink-2);
+}
+.cr-facts--places .cr-fact__place {
+  font-size: 16px;
+}
+.cr-planning {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--teal-ink);
+}
+.cr-planning__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--teal);
+}
+.cr-planning--warn {
+  color: var(--amber);
+}
+.cr-planning > svg {
+  flex: none;
+}
 .cr-offer__actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1136,15 +1171,16 @@ button.cr-req.is-selected {
   font-weight: 400;
   color: var(--muted);
 }
-.cr-detail__fact {
-  grid-column: 1 / -1;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--teal-wash);
+.cr-detail__places .cr-facts {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px 20px;
 }
-.cr-detail__fact dt {
-  color: var(--teal-ink);
-  font-weight: 600;
+.cr-detail__places .cr-fact__place {
+  font-size: 20px;
+}
+.cr-detail__places .cr-facts > :only-child {
+  grid-column: 1 / -1;
 }
 .cr-empty--board {
   border-style: dashed;
