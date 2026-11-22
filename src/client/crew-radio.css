@@ -588,6 +588,14 @@
   .cr-join__bar {
     padding: 28px 48px 0;
   }
+  .cr-join__bar .cr-wordmark {
+    gap: 10px;
+    font-size: 23px;
+  }
+  .cr-join__bar .cr-mark {
+    width: 34px;
+    height: 34px;
+  }
   .cr-join__body {
     grid-template-columns: minmax(0, 460px) minmax(0, 400px);
     justify-content: center;
@@ -631,7 +639,7 @@
   font-weight: 500;
   color: var(--muted);
   line-height: 1.2;
-  padding-left: 32px;
+  padding-left: 34px;
   overflow-wrap: anywhere;
 }
 .cr-top__right {

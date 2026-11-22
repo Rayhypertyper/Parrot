@@ -293,7 +293,7 @@ export const PHASE_LABEL: Record<VoicePhase, string> = {
   preparing: "Preparing session",
   connecting: "Connecting",
   listening: "Listening",
-  speaking: "Crew Radio is speaking",
+  speaking: "Parrot is speaking",
   ended: "Ended",
   error: "Voice unavailable",
 };

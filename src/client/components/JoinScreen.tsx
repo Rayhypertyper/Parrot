@@ -189,8 +189,8 @@ export function JoinScreen() {
           )}
         </section>
 
-        <aside className="cr-join__how" aria-label="How Crew Radio works">
-          <p className="cr-display cr-join__how-title">One radio for the whole crew</p>
+        <aside className="cr-join__how" aria-label="How Parrot works">
+          <p className="cr-display cr-join__how-title">Say it once. Parrot passes it on.</p>
           <ol className="cr-steps">
             <li>
               <span className="cr-steps__n">1</span>

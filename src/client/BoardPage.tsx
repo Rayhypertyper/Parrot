@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CrewShell } from "./CrewShell";
+import { CrewShell, usePageTitle } from "./CrewShell";
 import type { Feed } from "./crew/contract";
 import { useCrew } from "./crew/CrewProvider";
 import { ago, isActive, memberById, pendingOffers } from "./crew/derive";
@@ -26,6 +26,7 @@ import { VoiceSheet } from "./voice/VoiceSheet";
 import { voiceSubjects } from "./voice/subjects";
 
 export function BoardPage() {
+  usePageTitle("Parrot board");
   return <CrewShell>{(feed) => <Board feed={feed} />}</CrewShell>;
 }
 

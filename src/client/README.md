@@ -1,4 +1,4 @@
-# Crew Radio client (Agent B, `feat/crew-ui`)
+# Parrot client (Agent B, `feat/crew-ui`)
 
 Phone view, desktop board, and browser voice for the brief in
 `docs/crew-radio-plan.md`. Everything here lives in `src/client/**`.

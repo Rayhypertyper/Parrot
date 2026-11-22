@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { CrewShell } from "./CrewShell";
+import { CrewShell, usePageTitle } from "./CrewShell";
 import type { Feed } from "./crew/contract";
 import { useCrew } from "./crew/CrewProvider";
 import { isActive, myAssignments, myOpenRequests, pendingOffers } from "./crew/derive";
@@ -21,6 +21,7 @@ import { VoiceSheet } from "./voice/VoiceSheet";
 import { voiceSubjects } from "./voice/subjects";
 
 export function PhonePage() {
+  usePageTitle("Parrot");
   return <CrewShell>{(feed) => <PhoneHome feed={feed} />}</CrewShell>;
 }
 

@@ -43,7 +43,7 @@ export function VoiceSheet({ feed }: { feed: Feed }) {
     >
       <header className="cr-sheet__head">
         <h2 id="voice-title" className="cr-sheet__title">
-          Talk to Crew Radio
+          Talk to Parrot
         </h2>
         <button
           className="cr-icon-btn"
@@ -104,7 +104,7 @@ export function VoiceSheet({ feed }: { feed: Feed }) {
           )}
           {v.agentLine && (
             <p>
-              <span className="cr-transcript__who">Crew Radio</span> {v.agentLine}
+              <span className="cr-transcript__who">Parrot</span> {v.agentLine}
             </p>
           )}
         </div>
