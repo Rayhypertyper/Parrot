@@ -5,7 +5,7 @@ import { crewTransaction, getFeed, getMember, joinCrew, recordCommand, type Crew
 type Handler = (req: Request) => Promise<unknown>
 
 function endpoint(handler: Handler) {
-  return async (req: Request, res: Response) => {
+  return async (req: Request, res: Response, _context?: unknown) => {
     res.set('Cache-Control', 'no-store')
     try {
       res.json(await handler(req))
