@@ -524,14 +524,15 @@ export function CrewList({ feed }: { feed: Feed }) {
     <ul className="cr-crew">
       {feed.members.map((m) => (
         <li key={m.id} className="cr-crew__row">
-          <span className="cr-crew__name">
-            {m.name}
-            {m.id === feed.me.id && <span className="cr-you"> (you)</span>}
-          </span>
-          <AvailabilityMark value={m.availability} />
-          <span className="cr-crew__loc">
-            {[m.location, m.skills.join(", ")].filter(Boolean).join(". ")}
-          </span>
+          <div className="cr-crew__head">
+            <span className="cr-crew__name">
+              {m.name}
+              {m.id === feed.me.id && <span className="cr-you"> (you)</span>}
+            </span>
+            <AvailabilityMark value={m.availability} />
+          </div>
+          <span className="cr-crew__loc">{m.location.trim() || "Location not shared"}</span>
+          {m.skills.length > 0 && <span className="cr-crew__skills">{m.skills.join(", ")}</span>}
         </li>
       ))}
     </ul>

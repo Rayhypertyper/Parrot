@@ -70,6 +70,11 @@ function Board({ feed }: { feed: Feed }) {
       <NoticeBar />
 
       <main className="cr-board__grid">
+        <section className="cr-board__locations" aria-labelledby="locations-h">
+          <h2 id="locations-h" className="cr-pane__title">Crew locations</h2>
+          <CrewList feed={feed} />
+        </section>
+
         <section className="cr-pane cr-pane--list" aria-labelledby="req-h">
           <h2 id="req-h" className="cr-pane__title">
             Active requests <span className="cr-count">{active.length}</span>
@@ -152,11 +157,9 @@ function Board({ feed }: { feed: Feed }) {
           )}
         </section>
 
-        <aside className="cr-pane cr-pane--side" aria-label="Crew activity and availability">
+        <aside className="cr-pane cr-pane--side" aria-label="Crew activity">
           <h2 className="cr-pane__title">Activity</h2>
           <ActivityList feed={feed} items={feed.activity.slice(0, 20)} showRequest />
-          <h2 className="cr-pane__title cr-pane__title--gap">Crew</h2>
-          <CrewList feed={feed} />
           <p className="cr-foot">
             Signed in as {feed.me.name}.{" "}
             <button className="cr-link" onClick={leave}>
