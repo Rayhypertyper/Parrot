@@ -9,6 +9,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -85,6 +86,13 @@ function VoiceState({ children }: { children: ReactNode }) {
   const attempt = useRef(0);
   const crewRef = useRef(crew);
   crewRef.current = crew;
+
+  // Invalidate pending callbacks before the SDK tears down on unmount.
+  useLayoutEffect(() => {
+    return () => {
+      attempt.current++;
+    };
+  }, []);
 
   const phase: VoicePhase = (() => {
     if (local === "error") return "error";
@@ -166,6 +174,7 @@ function VoiceState({ children }: { children: ReactNode }) {
     if (my !== attempt.current) return;
 
     setLocal("started");
+    let acceptsToolResponses = true;
     controls.startSession({
       conversationToken: session.conversationToken,
       connectionType: "webrtc",
@@ -175,13 +184,18 @@ function VoiceState({ children }: { children: ReactNode }) {
         if (role === "agent") setAgentLine(message);
         else setUserLine(message);
       },
-      onAgentToolResponse: () => {
-        // submit_update committed on the server; show what the server says.
+      onAgentToolResponse: ({ tool_name, is_error }) => {
+        if (my !== attempt.current || !acceptsToolResponses) return;
+        if (tool_name !== "submit_update" || is_error !== false) return;
         setRecorded(true);
         crewRef.current.refresh();
       },
+      onStatusChange: ({ status }) => {
+        if (status === "disconnecting" || status === "disconnected") acceptsToolResponses = false;
+      },
       onDisconnect: (details) => {
         if (my !== attempt.current) return;
+        attempt.current++;
         crewRef.current.refresh();
         if (details.reason === "error") {
           fail({ kind: "connection", message: details.message || "The voice connection dropped." });
@@ -191,6 +205,7 @@ function VoiceState({ children }: { children: ReactNode }) {
       },
       onError: (message) => {
         if (my !== attempt.current) return;
+        acceptsToolResponses = false;
         fail({ kind: "connection", message: message || "Voice connection failed." });
       },
     });
