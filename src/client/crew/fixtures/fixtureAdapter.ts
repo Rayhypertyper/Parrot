@@ -104,7 +104,7 @@ function plan(db: Db, requestId: string) {
   const requester = db.members.find((m) => m.id === r.requesterId)!;
   if (!pick) {
     r.planningStatus = "waiting";
-    log(db, "Crew Radio", "No available teammate to ask yet", r.id);
+    log(db, "Parrot", "No available teammate to ask yet", r.id);
     touch(r);
     return;
   }
@@ -122,7 +122,7 @@ function plan(db: Db, requestId: string) {
   r.status = "offered";
   r.planningStatus = "idle";
   touch(r);
-  log(db, "Crew Radio", `Asked ${pick.name} to help`, r.id);
+  log(db, "Parrot", `Asked ${pick.name} to help`, r.id);
 }
 
 function schedulePlan(requestId: string) {
@@ -211,7 +211,7 @@ function apply(db: Db, me: Member, body: CrewEventBody): CrewEventResult {
         req.id,
       );
       schedulePlan(req.id);
-      return ok("Declined. Crew Radio will ask someone else.", req.id);
+      return ok("Declined. Parrot will ask someone else.", req.id);
     }
     case "blocked": {
       if (!req || req.assigneeId !== me.id || req.status !== "in_progress")
@@ -225,7 +225,7 @@ function apply(db: Db, me: Member, body: CrewEventBody): CrewEventResult {
       touch(req);
       log(db, me.name, body.text?.trim() ? `Blocked: "${body.text.trim()}"` : "Blocked", req.id);
       schedulePlan(req.id);
-      return ok("Released. Crew Radio will look for someone else.", req.id);
+      return ok("Released. Parrot will look for someone else.", req.id);
     }
     case "report_delivery": {
       if (!req || req.assigneeId !== me.id || req.status !== "in_progress")
@@ -344,7 +344,7 @@ export const fixtureAdapter: CrewApi = {
     await wait(400);
     memberFor(load(), token);
     throw new CrewApiError(
-      "Voice needs the live Crew Radio server. Type your update instead.",
+      "Voice needs the live Parrot server. Type your update instead.",
       503,
       "voice_unavailable",
     );

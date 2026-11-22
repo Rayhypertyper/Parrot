@@ -499,7 +499,7 @@ export function ActivityList({
               {clock(a.at)}
             </time>
             <span className="cr-activity__text">
-              <strong>{a.actorName}</strong> {lowerFirst(a.summary)}
+              <strong>{displayActor(a.actorName)}</strong> {lowerFirst(a.summary)}
               {req && <span className="cr-activity__req">{req.title}</span>}
             </span>
           </li>
@@ -507,6 +507,12 @@ export function ActivityList({
       })}
     </ol>
   );
+}
+
+// The server still writes its planner's activity as "Crew Radio"; show the
+// product name until the server copy is renamed.
+function displayActor(name: string) {
+  return name === "Crew Radio" ? "Parrot" : name;
 }
 
 function lowerFirst(s: string) {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CrewShell } from "./CrewShell";
+import { CrewShell, usePageTitle } from "./CrewShell";
 import type { Feed } from "./crew/contract";
 import { useCrew } from "./crew/CrewProvider";
 import { ago, isActive, memberById, pendingOffers } from "./crew/derive";
@@ -19,12 +19,14 @@ import {
 } from "./components/CrewParts";
 import { StatusBadge } from "./ui/primitives";
 import { IconPhone } from "./ui/icons";
+import { Wordmark } from "./ui/Wordmark";
 import { TalkKey } from "./voice/TalkKey";
 import { useVoice } from "./voice/VoiceProvider";
 import { VoiceSheet } from "./voice/VoiceSheet";
 import { voiceSubjects } from "./voice/subjects";
 
 export function BoardPage() {
+  usePageTitle("Parrot board");
   return <CrewShell>{(feed) => <Board feed={feed} />}</CrewShell>;
 }
 
@@ -32,7 +34,7 @@ export default BoardPage;
 
 function Board({ feed }: { feed: Feed }) {
   const voice = useVoice();
-  const { leave } = useCrew();
+  const { leave, session } = useCrew();
   const active = feed.requests.filter(isActive);
   const done = feed.requests.filter((r) => !isActive(r));
   const [picked, setPicked] = useState<string | null>(null);
@@ -44,8 +46,10 @@ function Board({ feed }: { feed: Feed }) {
     <div className="cr-board">
       <header className="cr-board__bar">
         <div className="cr-board__crew">
-          <p className="cr-wordmark">Crew Radio</p>
-          <h1 className="cr-board__name">{feed.crewName ?? "Crew board"}</h1>
+          <Wordmark />
+          <h1 className="cr-display cr-board__name">
+            {feed.crewName ?? `Crew ${session?.crewCode ?? ""}`.trim()}
+          </h1>
           <LinkStatus detailed />
         </div>
         <div className="cr-board__ask">

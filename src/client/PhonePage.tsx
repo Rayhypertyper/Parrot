@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { CrewShell } from "./CrewShell";
+import { CrewShell, usePageTitle } from "./CrewShell";
 import type { Feed } from "./crew/contract";
 import { useCrew } from "./crew/CrewProvider";
 import { isActive, myAssignments, myOpenRequests, pendingOffers } from "./crew/derive";
@@ -14,12 +14,14 @@ import {
   RequestSummary,
 } from "./components/CrewParts";
 import { IconBoard, IconHand } from "./ui/icons";
+import { Wordmark } from "./ui/Wordmark";
 import { TalkKey } from "./voice/TalkKey";
 import { useVoice } from "./voice/VoiceProvider";
 import { VoiceSheet } from "./voice/VoiceSheet";
 import { voiceSubjects } from "./voice/subjects";
 
 export function PhonePage() {
+  usePageTitle("Parrot");
   return <CrewShell>{(feed) => <PhoneHome feed={feed} />}</CrewShell>;
 }
 
@@ -27,7 +29,8 @@ export default PhonePage;
 
 function PhoneHome({ feed }: { feed: Feed }) {
   const voice = useVoice();
-  const { leave } = useCrew();
+  const { leave, session } = useCrew();
+  const crewLabel = feed.crewName ?? `Crew ${session?.crewCode ?? ""}`.trim();
   const askRef = useRef<HTMLTextAreaElement>(null);
   const offers = pendingOffers(feed);
   const mine = [...myAssignments(feed), ...myOpenRequests(feed)];
@@ -39,8 +42,11 @@ function PhoneHome({ feed }: { feed: Feed }) {
     <div className="cr-phone">
       <header className="cr-top">
         <div className="cr-top__crew">
-          <p className="cr-wordmark">Crew Radio</p>
-          <h1 className="cr-top__name">{feed.crewName ?? "Your crew"}</h1>
+          <h1 className="cr-top__brand">
+            <Wordmark />
+            <span className="cr-visually-hidden">, </span>
+            <span className="cr-top__name">{crewLabel}</span>
+          </h1>
         </div>
         <div className="cr-top__right">
           <LinkStatus />

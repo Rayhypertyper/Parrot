@@ -184,9 +184,10 @@ function VoiceState({ children }: { children: ReactNode }) {
         if (role === "agent") setAgentLine(message);
         else setUserLine(message);
       },
-      onAgentToolResponse: ({ tool_name, is_error }) => {
+      onAgentToolResponse: (response) => {
         if (my !== attempt.current || !acceptsToolResponses) return;
-        if (tool_name !== "submit_update" || is_error !== false) return;
+        if (response.tool_name !== "submit_update" || response.is_error !== false) return;
+        if (response.is_called === false || ("is_blocked" in response && response.is_blocked)) return;
         setRecorded(true);
         crewRef.current.refresh();
       },
@@ -292,7 +293,7 @@ export const PHASE_LABEL: Record<VoicePhase, string> = {
   preparing: "Preparing session",
   connecting: "Connecting",
   listening: "Listening",
-  speaking: "Crew Radio is speaking",
+  speaking: "Parrot is speaking",
   ended: "Ended",
   error: "Voice unavailable",
 };
