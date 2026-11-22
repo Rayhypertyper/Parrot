@@ -180,9 +180,12 @@ export const maritimePlanner: Planner = async (input) => {
     method: 'POST',
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify(input),
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(22_000),
     redirect: 'error',
   })
-  if (!response.ok) throw new Error('Planner refused the request')
+  if (!response.ok) {
+    console.warn('Crew planner returned an HTTP error', { status: response.status })
+    throw new Error('Planner refused the request')
+  }
   return response.json()
 }

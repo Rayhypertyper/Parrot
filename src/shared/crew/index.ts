@@ -98,6 +98,7 @@ export interface VoiceSessionResult {
   dynamicVariables: {
     secret__crew_ticket: string
     member_name: string
+    opening_message: string
     request_context: string
     offer_context: string
   }

@@ -10,11 +10,11 @@ let pending: Promise<CrewApi> | null = null;
 
 export function getCrewApi(): Promise<CrewApi> {
   if (!pending) {
-    pending = wantsFixture
+    pending = import.meta.env.DEV && wantsFixture
       ? import("./fixtures/fixtureAdapter").then((m) => m.fixtureAdapter)
       : Promise.resolve(httpAdapter);
   }
   return pending;
 }
 
-export const usingFixture = wantsFixture;
+export const usingFixture = import.meta.env.DEV && wantsFixture;

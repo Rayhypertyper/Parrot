@@ -87,10 +87,13 @@ async function plan(input: Body): Promise<Body> {
         messages: [{ role: 'system', content: instructions }, { role: 'user', content: JSON.stringify(input) }],
         response_format: { type: 'json_object' },
       }),
-      signal: AbortSignal.timeout(6500),
+      signal: AbortSignal.timeout(16_000),
       redirect: 'error',
     })
-    if (!res.ok) throw new Error('Model request failed')
+    if (!res.ok) {
+      console.warn('Planner model returned an HTTP error', { status: res.status })
+      throw new Error('Model request failed')
+    }
     const completion = await res.json() as { choices?: Array<{ message?: { content?: string } }> }
     const response = object(parseJson(completion.choices?.[0]?.message?.content ?? ''))
     return verifyDecision(response, requestId, revision, candidateIds)

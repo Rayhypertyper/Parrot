@@ -17,10 +17,13 @@ export const getElevenLabsToken: ElevenLabsToken = async () => {
     url.searchParams.set('agent_id', agentId)
     const res = await fetch(url, {
       headers: { 'xi-api-key': apiKey },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10_000),
       redirect: 'error',
     })
-    if (!res.ok) throw new Error('Voice token was refused')
+    if (!res.ok) {
+      console.warn('ElevenLabs refused a Crew Radio token', { status: res.status })
+      throw new Error('Voice token was refused')
+    }
     const data = await res.json() as Record<string, unknown>
     if (typeof data.token !== 'string' || !data.token ||
         typeof data.conversation_id !== 'string' || !data.conversation_id) {
@@ -78,6 +81,9 @@ export async function startVoiceSession(
     dynamicVariables: {
       secret__crew_ticket: ticket,
       member_name: member.name,
+      opening_message: offer?.status === 'pending'
+        ? `Hi ${member.name}. ${offer.message}`
+        : `Hi ${member.name}. What would you like to tell the crew?`,
       offer_context: offer?.message ?? '',
       request_context: request ? [
         request.title, request.destination && `Destination: ${request.destination}`,
