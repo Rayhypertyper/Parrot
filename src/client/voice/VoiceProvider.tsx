@@ -52,7 +52,7 @@ interface VoiceValue {
   recorded: boolean;
   open: (subject: VoiceSubject) => void;
   setSubject: (subject: VoiceSubject) => void;
-  start: () => Promise<void>;
+  start: (target?: VoiceSubject) => Promise<void>;
   end: () => void;
   close: () => void;
   levels: () => { input: number; output: number };
@@ -123,10 +123,12 @@ function VoiceState({ children }: { children: ReactNode }) {
     setLocal("error");
   };
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (target = subject) => {
     const c = crewRef.current;
-    if (!c.api || !c.session || !subject) return;
+    if (!c.api || !c.session || !target) return;
     if (ACTIVE.includes(phase)) return; // one local session at a time
+    setSubject(target);
+    setOpen(true);
     const my = ++attempt.current;
     setError(null);
     setAgentLine(null);
@@ -163,8 +165,8 @@ function VoiceState({ children }: { children: ReactNode }) {
     let session;
     try {
       session = await c.api.voiceSession(c.session.memberToken, {
-        requestId: subject.requestId,
-        offerId: subject.offerId,
+        requestId: target.requestId,
+        offerId: target.offerId,
       });
     } catch (err) {
       if (my !== attempt.current) return;
