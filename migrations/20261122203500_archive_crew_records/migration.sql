@@ -1,0 +1,2 @@
+ALTER TABLE "CrewMember" ADD COLUMN "archivedAt" TIMESTAMP(3);
+ALTER TABLE "CrewRequest" ADD COLUMN "archivedAt" TIMESTAMP(3);

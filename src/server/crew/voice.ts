@@ -41,6 +41,7 @@ async function voiceContext(db: Pick<CrewTransaction, 'crewRequest'>, member: Cr
     where: {
       id: input.requestId,
       crewId: member.crewId,
+      archivedAt: null,
       ...(input.offerId && { offers: { some: { id: input.offerId, recipientId: member.id } } }),
     },
     include: { offers: {

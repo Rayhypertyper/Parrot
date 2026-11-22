@@ -54,6 +54,7 @@ model CrewMember {
   skills       String[]
   sessionHash  String?           @unique
   lastSeenAt   DateTime?
+  archivedAt   DateTime?
   updatedAt    DateTime          @updatedAt
   crew         Crew              @relation(fields: [crewId], references: [id], onDelete: Cascade)
   requests     CrewRequest[]     @relation("Requester")
@@ -79,6 +80,7 @@ model CrewRequest {
   planningStatus CrewPlanningStatus @default(idle)
   planAttemptId  String?
   planStartedAt  DateTime?
+  archivedAt     DateTime?
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   crew           Crew               @relation(fields: [crewId], references: [id], onDelete: Cascade)

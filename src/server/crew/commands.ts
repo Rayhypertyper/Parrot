@@ -1,6 +1,6 @@
 import type { CrewMember, CrewRequest, Prisma } from '@prisma/client'
 import type { CrewCommand, CrewEventResult } from '../../shared/crew/index'
-import { conflict, notFound } from './input'
+import { conflict, CrewError, notFound } from './input'
 import type { CrewActor, CrewTransaction } from './store'
 
 export const planningReset = { planningStatus: 'idle', planAttemptId: null, planStartedAt: null } as const
@@ -29,6 +29,8 @@ function sameCommand(previous: Prisma.JsonValue, command: Prisma.InputJsonObject
 export async function recordCommand(
   tx: CrewTransaction, actor: CrewActor, eventId: string, command: CrewCommand,
 ): Promise<RecordedCommand> {
+  const member = await tx.crewMember.findUniqueOrThrow({ where: { id: actor.id } })
+  if (member.archivedAt) throw new CrewError(401, 'unauthorized', 'Join the crew to continue.')
   const previous = await tx.crewEventRecord.findUnique({
     where: { memberId_eventId: { memberId: actor.id, eventId } },
   })
@@ -41,7 +43,6 @@ export async function recordCommand(
     }
   }
 
-  const member = await tx.crewMember.findUniqueOrThrow({ where: { id: actor.id } })
   const { requestId, message, summary, plan } = await applyCommand(tx, member, command)
   await tx.crewEventRecord.create({
     data: { eventId, memberId: member.id, requestId, command: serialized, message, createdAt: new Date() },
@@ -85,14 +86,14 @@ async function changeAvailability(
   const plan: string[] = []
   if (command.availability === 'busy') {
     const offer = await tx.crewOffer.findFirst({
-      where: { recipientId: member.id, status: 'pending', releasedAt: null },
+      where: { recipientId: member.id, status: 'pending', releasedAt: null, request: { archivedAt: null } },
       include: { request: true },
     })
     if (offer && await releasePendingOffer(tx, offer, 'withdrawn')) plan.push(offer.requestId)
   }
   if (command.availability === 'available') {
     const open = await tx.crewRequest.findMany({
-      where: { crewId: member.crewId, status: 'open' }, select: { id: true },
+      where: { crewId: member.crewId, status: 'open', archivedAt: null }, select: { id: true },
     })
     plan.push(...open.map(({ id }) => id))
   }
@@ -113,7 +114,7 @@ async function replyToOffer(
   })
   if (!offer || (command.requestId && command.requestId !== offer.requestId)) notFound('Offer was not found.')
   const request = offer.request
-  if (offer.status !== 'pending' || offer.releasedAt || request.status !== 'offered') conflict(staleOffer)
+  if (offer.status !== 'pending' || offer.releasedAt || request.archivedAt || request.status !== 'offered') conflict(staleOffer)
 
   if (command.kind === 'accept') {
     if (member.availability !== 'available' || member.id === request.requesterId) conflict(staleOffer)
@@ -179,7 +180,9 @@ async function updateHandoff(
   member: CrewMember,
   command: Extract<CrewCommand, { kind: 'blocked' | 'report_delivery' | 'confirm_receipt' }>,
 ): Promise<Mutation> {
-  const request = await tx.crewRequest.findFirst({ where: { id: command.requestId, crewId: member.crewId } })
+  const request = await tx.crewRequest.findFirst({
+    where: { id: command.requestId, crewId: member.crewId, archivedAt: null },
+  })
   if (!request) notFound('Request was not found.')
   const confirms = command.kind === 'confirm_receipt'
   if (member.id !== (confirms ? request.requesterId : request.assigneeId)) conflict(staleRequest)

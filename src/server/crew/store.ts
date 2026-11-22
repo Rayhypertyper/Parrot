@@ -33,7 +33,7 @@ export async function joinCrew(db: CrewDatabase, input: CrewJoinInput): Promise<
     const member = await tx.crewMember.findUnique({
       where: { crewId_profileCode: { crewId: crew.id, profileCode: input.profileCode.toLowerCase() } },
     })
-    if (!member) notFound('Choose a profile in this crew.')
+    if (!member || member.archivedAt) notFound('Choose a profile in this crew.')
     if (member.sessionHash) throw new CrewError(409, 'profile_taken', 'That profile is already claimed. Choose another.')
     const memberToken = secretToken()
     await tx.crewMember.update({
@@ -46,7 +46,7 @@ export async function joinCrew(db: CrewDatabase, input: CrewJoinInput): Promise<
 export async function getMember(db: CrewDatabase, header: string | undefined): Promise<MemberRow> {
   const token = /^Bearer ([\w-]{43})$/i.exec(header ?? '')?.[1]
   const member = token && await db.crewMember.findUnique({ where: { sessionHash: tokenHash(token) } })
-  if (!member) throw new CrewError(401, 'unauthorized', 'Join the crew to continue.')
+  if (!member || member.archivedAt) throw new CrewError(401, 'unauthorized', 'Join the crew to continue.')
   return member
 }
 
@@ -58,18 +58,21 @@ export async function getFeed(db: CrewDatabase, actor: CrewActor): Promise<CrewF
   await db.$executeRaw`
     UPDATE "CrewMember" SET "lastSeenAt" = ${seenAt}
     WHERE "id" = ${actor.id}
+      AND "archivedAt" IS NULL
       AND ("lastSeenAt" IS NULL OR "lastSeenAt" < ${new Date(+seenAt - 10_000)})
   `
   return db.$transaction(async (tx) => {
     const members = await tx.crewMember.findMany({
-      where: { crewId: actor.crewId }, select: { ...memberFields, updatedAt: true }, orderBy: { name: 'asc' },
+      where: { crewId: actor.crewId },
+      select: { ...memberFields, updatedAt: true, archivedAt: true },
+      orderBy: { name: 'asc' },
     })
     const requests = await tx.crewRequest.findMany({
-      where: { crewId: actor.crewId },
+      where: { crewId: actor.crewId, archivedAt: null },
       orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
     })
     const myOffers = await tx.crewOffer.findMany({
-      where: { request: { crewId: actor.crewId }, recipientId: actor.id },
+      where: { request: { crewId: actor.crewId, archivedAt: null }, recipientId: actor.id },
       select: { id: true, requestId: true, recipientId: true, status: true, message: true },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 30,
     })
@@ -78,9 +81,12 @@ export async function getFeed(db: CrewDatabase, actor: CrewActor): Promise<CrewF
       select: { id: true, requestId: true, at: true, actorName: true, summary: true },
       orderBy: [{ at: 'desc' }, { id: 'asc' }], take: 40,
     })
-    const memberDtos: CrewMember[] = members.map(({ updatedAt: _updatedAt, ...member }) => member)
+    const memberDtos: CrewMember[] = members.map(({ updatedAt: _updatedAt, archivedAt, ...member }) => ({
+      ...member,
+      ...(archivedAt ? { archived: true } : {}),
+    }))
     const me = memberDtos.find(({ id }) => id === actor.id)
-    if (!me) throw new CrewError(401, 'unauthorized', 'Join the crew to continue.')
+    if (!me || me.archived) throw new CrewError(401, 'unauthorized', 'Join the crew to continue.')
     const updatedAt = Math.max(
       ...members.map((member) => +member.updatedAt),
       +(requests[0]?.updatedAt ?? 0),

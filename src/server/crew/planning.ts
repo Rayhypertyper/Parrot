@@ -103,6 +103,7 @@ function eligibleMembers(tx: CrewTransaction, request: RequestRow, memberIds?: s
       id: { in: memberIds, not: request.requesterId },
       crewId: request.crewId,
       availability: 'available',
+      archivedAt: null,
       lastSeenAt: { gte: new Date(Date.now() - 45_000) },
       offers: { none: { OR: [
         { releasedAt: null, status: { in: ['pending', 'accepted'] } },
@@ -120,7 +121,9 @@ export async function planRequest(
 ): Promise<RetryPlanResult> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const started = await crewTransaction(db, actor.crewId, async (tx) => {
-      const request = await tx.crewRequest.findFirst({ where: { id: requestId, crewId: actor.crewId } })
+      const request = await tx.crewRequest.findFirst({
+        where: { id: requestId, crewId: actor.crewId, archivedAt: null },
+      })
       if (!request) notFound('Request was not found.')
       if (request.status !== 'open') {
         if (explicit && attempt === 0) conflict('Only an open request can be planned.')
@@ -170,7 +173,9 @@ export async function planRequest(
       console.info('Offering the handoff to two available teammates using the crew roster.', { requestId, revision: input.revision })
     }
     const outcome = await crewTransaction(db, actor.crewId, async (tx) => {
-      const request = await tx.crewRequest.findFirst({ where: { id: requestId, crewId: actor.crewId } })
+      const request = await tx.crewRequest.findFirst({
+        where: { id: requestId, crewId: actor.crewId, archivedAt: null },
+      })
       if (!request || request.status !== 'open' || request.revision !== input.revision ||
           request.planAttemptId !== planAttemptId) return 'superseded'
       if (!proposal || proposal.action === 'wait') {

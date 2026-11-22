@@ -522,7 +522,7 @@ function lowerFirst(s: string) {
 export function CrewList({ feed }: { feed: Feed }) {
   return (
     <ul className="cr-crew">
-      {feed.members.map((m) => (
+      {feed.members.filter((member) => !member.archived).map((m) => (
         <li key={m.id} className="cr-crew__row">
           <div className="cr-crew__head">
             <span className="cr-crew__name">

@@ -18,6 +18,7 @@ export interface CrewMember {
   location: string
   availability: Availability
   skills: string[]
+  archived?: true
 }
 
 export interface CrewRequest {

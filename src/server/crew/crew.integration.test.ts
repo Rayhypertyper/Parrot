@@ -333,4 +333,29 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     assert.equal(modelCalls, callsBefore)
     assert.deepEqual((await feed(jules)).myOffers, [])
   })
+
+  await t.test('archiving removes the profile and active request while retaining history', async () => {
+    const { jo, alex, crewCode } = await fixture()
+    const requested = await event(jo, { kind: 'request_help', text: 'Arrange a replacement cable.' })
+    assert.equal(requested.status, 200)
+    const [offer] = (await feed(alex)).myOffers
+    const requestId = requested.data.requestId
+    const archivedAt = new Date()
+    await db.$transaction([
+      db.crewMember.update({ where: { id: jo.memberId }, data: { archivedAt, sessionHash: null } }),
+      db.crewRequest.update({ where: { id: requestId }, data: { archivedAt } }),
+      db.crewOffer.updateMany({ where: { requestId, releasedAt: null }, data: { status: 'withdrawn', releasedAt: archivedAt } }),
+    ])
+    assert.equal((await call(crewRoutes.feed, undefined, jo)).status, 401)
+    assert.equal((await call(crewRoutes.join, { crewCode, profileCode: 'jo' })).status, 404)
+    assert.equal((await call(crewRoutes.voiceSession, { offerId: offer.id }, alex)).status, 404)
+    assert.equal((await event(alex, { kind: 'accept', offerId: offer.id })).status, 409)
+    assert.equal((await call(crewRoutes.retryPlan, { requestId }, alex)).status, 404)
+    const board = await feed(alex)
+    assert.equal(board.members.find(({ id }) => id === jo.memberId)?.archived, true)
+    assert.equal(board.requests.some(({ id }) => id === requestId), false)
+    assert.equal(board.myOffers.some(({ requestId: id }) => id === requestId), false)
+    assert.ok(board.activity.some((item) => item.requestId === requestId))
+    assert.equal((await db.crewRequest.findUniqueOrThrow({ where: { id: requestId } })).requesterId, jo.memberId)
+  })
 })
