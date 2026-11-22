@@ -41,8 +41,33 @@ export function required(body: Record<string, unknown>, name: string, maxLength?
 }
 
 export function parseCommand(body: Record<string, unknown>): CrewCommand {
-  if (body.kind !== 'request_help') invalid('Unknown crew event kind.')
-  return { kind: 'request_help', text: required(body, 'text', 1000), location: field(body, 'location', 500) }
+  const text = field(body, 'text', 1000)
+  const location = field(body, 'location', 500)
+  const requestId = field(body, 'requestId')
+  const offerId = field(body, 'offerId')
+  switch (body.kind) {
+    case 'request_help':
+      return { kind: body.kind, text: text ?? invalid('Describe the help you need.'), location }
+    case 'availability_update': {
+      const availability = body.availability
+      if (availability !== undefined && availability !== 'available' && availability !== 'busy') {
+        invalid('Choose available or busy.')
+      }
+      if (!availability && !location) invalid('Provide availability or a location.')
+      return { kind: body.kind, availability, location, text }
+    }
+    case 'accept':
+      return { kind: body.kind, requestId, offerId: offerId ?? invalid('Provide the offer ID.') }
+    case 'decline':
+      return { kind: body.kind, requestId, offerId: offerId ?? invalid('Provide the offer ID.'), text, location }
+    case 'blocked':
+      return { kind: body.kind, requestId: requestId ?? invalid('Provide the request ID.'), offerId, text, location }
+    case 'report_delivery':
+    case 'confirm_receipt':
+      return { kind: body.kind, requestId: requestId ?? invalid('Provide the request ID.'), offerId, text }
+    default:
+      invalid('Unknown crew event kind.')
+  }
 }
 
 export function readEventId(body: Record<string, unknown>): string {

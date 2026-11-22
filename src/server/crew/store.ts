@@ -1,9 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto'
 import type { CrewMember as MemberRow, Prisma, PrismaClient } from '@prisma/client'
 import type {
-  CrewCommand, CrewEventResult, CrewFeed, CrewJoinInput, CrewMember, CrewSession,
+  CrewFeed, CrewJoinInput, CrewMember, CrewSession,
 } from '../../shared/crew/index'
-import { conflict, CrewError, notFound } from './input'
+import { CrewError, notFound } from './input'
+
+export const planLeaseMs = 30_000
 
 export type CrewDatabase = PrismaClient
 export type CrewTransaction = Prisma.TransactionClient
@@ -84,7 +86,7 @@ export async function getFeed(db: CrewDatabase, actor: CrewActor): Promise<CrewF
         revision: request.revision, assigneeId: request.assigneeId, latestFact: request.latestFact,
         pickupLocation: request.pickupLocation, destination: request.destination,
         planningStatus: request.planningStatus === 'planning' && request.planStartedAt &&
-          now - +request.planStartedAt > 30_000 ? 'failed' : request.planningStatus,
+          now - +request.planStartedAt >= planLeaseMs ? 'failed' : request.planningStatus,
         updatedAt: request.updatedAt.toISOString(),
       })),
       myOffers,
@@ -92,32 +94,4 @@ export async function getFeed(db: CrewDatabase, actor: CrewActor): Promise<CrewF
       updatedAt: new Date(updatedAt).toISOString(),
     }
   }, { isolationLevel: 'RepeatableRead' })
-}
-
-export async function recordCommand(tx: CrewTransaction, actor: CrewActor, eventId: string, command: CrewCommand): Promise<CrewEventResult> {
-  const previous = await tx.crewEventRecord.findUnique({
-    where: { memberId_eventId: { memberId: actor.id, eventId } },
-  })
-  // Prisma's JSONB key order can differ from the order of the parsed command.
-  const serialized = JSON.parse(JSON.stringify(command)) as Prisma.InputJsonObject
-  if (previous) {
-    const same = JSON.stringify(previous.command, Object.keys(serialized).sort()) ===
-      JSON.stringify(serialized, Object.keys(serialized).sort()) &&
-      Object.keys(previous.command as object).length === Object.keys(serialized).length
-    if (!same) conflict('This event ID has already been used for another update.')
-    return { eventId, requestId: previous.requestId ?? undefined, result: 'applied', message: previous.message }
-  }
-  if (command.kind !== 'request_help') conflict('This action is unavailable.')
-  const member = await tx.crewMember.findUniqueOrThrow({ where: { id: actor.id } })
-  const request = await tx.crewRequest.create({
-    data: { crewId: actor.crewId, requesterId: actor.id, title: command.text, destination: command.location },
-  })
-  const message = 'Request recorded.'
-  await tx.crewEventRecord.create({
-    data: { eventId, memberId: actor.id, requestId: request.id, command: serialized, message },
-  })
-  await tx.crewActivity.create({
-    data: { crewId: actor.crewId, requestId: request.id, actorName: member.name, summary: command.text },
-  })
-  return { eventId, requestId: request.id, result: 'applied', message }
 }

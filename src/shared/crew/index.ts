@@ -76,7 +76,8 @@ export type CrewCommand =
   | { kind: 'accept'; requestId?: string; offerId: string }
   | { kind: 'decline'; requestId?: string; offerId: string; text?: string; location?: string }
   | { kind: 'blocked'; requestId: string; offerId?: string; text?: string; location?: string }
-  | { kind: 'report_delivery' | 'confirm_receipt'; requestId: string; offerId?: string; text?: string }
+  | { kind: 'report_delivery'; requestId: string; offerId?: string; text?: string }
+  | { kind: 'confirm_receipt'; requestId: string; offerId?: string; text?: string }
 
 export type CrewEvent = CrewCommand & { eventId: string }
 

@@ -7,4 +7,7 @@ const handlers = createCrewHandlers(prisma)
 export const crewJoin = handlers.join
 export const crewFeed = handlers.feed
 export const crewEvents = handlers.events
+export const crewRetryPlan = handlers.retryPlan
+export const crewVoiceSession = handlers.voiceSession
+export const crewVoiceTool = handlers.voiceTool
 export const crewApiMiddleware: MiddlewareConfigFn = (config) => config

@@ -1,5 +1,5 @@
 import { api, apiNamespace, app } from '@wasp.sh/spec'
-import { crewApiMiddleware, crewEvents, crewFeed, crewJoin } from './src/server/crew/routes' with { type: 'ref' }
+import { crewApiMiddleware, crewEvents, crewFeed, crewJoin, crewRetryPlan, crewVoiceSession, crewVoiceTool } from './src/server/crew/routes' with { type: 'ref' }
 import { seedDemo } from './src/server/crew/seed' with { type: 'ref' }
 import { crewRoutes } from './src/shared/crew/index'
 
@@ -13,5 +13,8 @@ export default app({
     api('POST', crewRoutes.join, crewJoin, { auth: false }),
     api('GET', crewRoutes.feed, crewFeed, { auth: false }),
     api('POST', crewRoutes.events, crewEvents, { auth: false }),
+    api('POST', crewRoutes.retryPlan, crewRetryPlan, { auth: false }),
+    api('POST', crewRoutes.voiceSession, crewVoiceSession, { auth: false }),
+    api('POST', crewRoutes.voiceTool, crewVoiceTool, { auth: false }),
   ],
 })
