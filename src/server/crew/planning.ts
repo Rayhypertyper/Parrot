@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { CrewRequest as RequestRow, Prisma } from '@prisma/client'
 import type { CrewMember, CrewOffer, RetryPlanResult } from '../../shared/crew/index'
+import { allHandsDetails } from '../../shared/crew/index'
 import { planningReset } from './commands'
 import { conflict, notFound } from './input'
 import { crewTransaction, planLeaseMs, type CrewActor, type CrewDatabase, type CrewTransaction } from './store'
@@ -128,6 +129,10 @@ export async function planRequest(
       if (request.status !== 'open') {
         if (explicit && attempt === 0) conflict('Only an open request can be planned.')
         return result(requestId, 'superseded')
+      }
+      if (request.allHands && !request.destination && allHandsDetails(request.title) === '') {
+        await setPlanningStatus(tx, requestId, 'waiting')
+        return result(requestId, 'waiting')
       }
       if (request.planningStatus === 'planning' && request.planStartedAt &&
           Date.now() - +request.planStartedAt < planLeaseMs && newEvent === undefined) {

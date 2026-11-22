@@ -1,0 +1,1 @@
+ALTER TABLE "CrewRequest" ADD COLUMN "allHands" BOOLEAN NOT NULL DEFAULT false;

@@ -12,6 +12,12 @@ export type RequestStatus = 'open' | 'offered' | 'in_progress' | 'awaiting_confi
 export type OfferStatus = 'pending' | 'accepted' | 'declined' | 'withdrawn'
 export type PlanningStatus = 'idle' | 'planning' | 'waiting' | 'failed'
 
+export function allHandsDetails(text: string): string | null {
+  const trimmed = text.trim()
+  const prefix = /^all[\s-]+hands[\s-]+on[\s-]+deck\b[\s:,.!?–—-]*/i.exec(trimmed)
+  return prefix ? trimmed.slice(prefix[0].length) : null
+}
+
 export interface CrewMember {
   id: string
   name: string
@@ -24,6 +30,7 @@ export interface CrewMember {
 export interface CrewRequest {
   id: string
   title: string
+  allHands?: true
   requesterId: string
   status: RequestStatus
   revision: number

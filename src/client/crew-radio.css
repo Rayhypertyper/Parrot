@@ -352,6 +352,13 @@
   background: var(--amber-wash);
   color: #6b3a00;
 }
+.cr-notice--all-hands {
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.cr-all-hands__detail {
+  display: block;
+}
 .cr-notice--error {
   background: var(--red-wash);
   color: var(--red);

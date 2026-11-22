@@ -20,6 +20,7 @@ import {
   IconX,
 } from "../ui/icons";
 import { useVoice } from "../voice/VoiceProvider";
+import { AllHandsAlerts } from "./AllHandsAlerts";
 
 /* ---------- connection + notices ---------- */
 
@@ -41,9 +42,10 @@ export function LinkStatus({ detailed }: { detailed?: boolean }) {
 }
 
 export function NoticeBar() {
-  const { notice, say } = useCrew();
+  const { feed, notice, say } = useCrew();
   return (
     <div className="cr-notice-slot" aria-live="polite">
+      {feed && <AllHandsAlerts key={feed.me.id} feed={feed} />}
       {notice && (
         <div className={`cr-notice cr-notice--${notice.tone}`} key={notice.at}>
           {notice.tone !== "ok" ? <IconAlert size={18} /> : <IconCheck size={18} />}

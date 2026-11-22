@@ -1,5 +1,6 @@
 import type { CrewMember, CrewRequest, Prisma } from '@prisma/client'
 import type { CrewCommand, CrewEventResult } from '../../shared/crew/index'
+import { allHandsDetails } from '../../shared/crew/index'
 import { conflict, CrewError, notFound } from './input'
 import type { CrewActor, CrewTransaction } from './store'
 
@@ -56,10 +57,14 @@ export async function recordCommand(
 async function applyCommand(tx: CrewTransaction, member: CrewMember, command: CrewCommand): Promise<Mutation> {
   switch (command.kind) {
     case 'request_help': {
+      const allHands = allHandsDetails(command.text) !== null
       const request = await tx.crewRequest.create({
-        data: { crewId: member.crewId, requesterId: member.id, title: command.text, destination: command.location },
+        data: { crewId: member.crewId, requesterId: member.id, title: command.text, destination: command.location, allHands },
       })
-      return { requestId: request.id, message: 'Request recorded.', summary: command.text, plan: [request.id] }
+      return {
+        requestId: request.id, message: allHands ? 'All-hands alert sent.' : 'Request recorded.',
+        summary: command.text, plan: [request.id],
+      }
     }
     case 'availability_update':
       return changeAvailability(tx, member, command)

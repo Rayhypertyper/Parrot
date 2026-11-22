@@ -98,6 +98,7 @@ export async function getFeed(db: CrewDatabase, actor: CrewActor): Promise<CrewF
       members: memberDtos,
       requests: requests.map((request) => ({
         id: request.id, title: request.title, requesterId: request.requesterId, status: request.status,
+        ...(request.allHands ? { allHands: true as const } : {}),
         revision: request.revision, assigneeId: request.assigneeId, latestFact: request.latestFact,
         pickupLocation: request.pickupLocation, destination: request.destination,
         planningStatus: request.planningStatus === 'planning' && request.planStartedAt &&

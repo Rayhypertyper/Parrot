@@ -72,6 +72,7 @@ model CrewRequest {
   requesterId    String
   assigneeId     String?
   title          String
+  allHands       Boolean            @default(false)
   status         CrewRequestStatus  @default(open)
   revision       Int                @default(1)
   latestFact     String?

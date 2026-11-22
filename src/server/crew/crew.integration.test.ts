@@ -358,4 +358,36 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     assert.ok(board.activity.some((item) => item.requestId === requestId))
     assert.equal((await db.crewRequest.findUniqueOrThrow({ where: { id: requestId } })).requesterId, jo.memberId)
   })
+
+  await t.test('all-hands alerts reach busy, protected, available, and returning teammates', async () => {
+    const { jo, alex, maya, jules, crewCode } = await fixture()
+    await event(maya, { kind: 'availability_update', availability: 'busy' })
+    const callsBefore = modelCalls
+    const late = await db.crewMember.create({ data: {
+      crewId: jo.crewId, profileCode: 'late', name: 'Late', location: 'Room B', availability: 'busy', skills: [],
+    } })
+    const session = await call(crewRoutes.voiceSession, {}, jo)
+    assert.equal(session.status, 200)
+    const voice = await call(crewRoutes.voiceTool, { kind: 'request_help', text: 'All hands on deck!' }, undefined, {
+      'x-crew-webhook-secret': process.env.ELEVENLABS_WEBHOOK_SECRET,
+      'x-crew-ticket': session.data.dynamicVariables.secret__crew_ticket,
+      'x-elevenlabs-conversation-id': conversationId,
+    })
+    assert.equal(voice.status, 200)
+    assert.equal(voice.data.message, 'All-hands alert sent.')
+    assert.equal(modelCalls, callsBefore)
+
+    const returned = await call(crewRoutes.join, { crewCode, profileCode: 'late' })
+    assert.equal(returned.data.memberId, late.id)
+    const recipientFeeds = await Promise.all([alex, maya, jules, returned.data].map(feed))
+    for (const recipient of recipientFeeds) {
+      assert.equal(recipient.requests.find(({ id }) => id === voice.data.requestId)?.allHands, true)
+      assert.equal(recipient.myOffers.some(({ requestId }) => requestId === voice.data.requestId), false)
+    }
+    const typed = await event(jo, { kind: 'request_help', text: 'All hands on deck — bring power strips to check-in.' })
+    assert.equal(typed.status, 200)
+    assert.equal((await feed(jules)).requests.find(({ id }) => id === typed.data.requestId)?.allHands, true)
+    const otherCrew = await fixture()
+    assert.equal((await feed(otherCrew.jo)).requests.length, 0)
+  })
 })

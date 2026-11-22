@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Feed } from "../crew/contract";
 import { Button } from "../ui/primitives";
 import { isVoiceActive, useVoice } from "./VoiceProvider";
+import { playPing } from "./ping";
 import { voiceSubjects } from "./subjects";
 
 export function HandsFreeOffers({ feed }: { feed: Feed }) {
@@ -51,20 +52,12 @@ export function HandsFreeOffers({ feed }: { feed: Feed }) {
   useEffect(() => {
     if (!enabled || isOpen || isVoiceActive(phase) || document.hidden || !incoming?.offerId) return;
     const context = audio.current;
-    if (context?.state === "running") {
-      const tone = context.createOscillator();
-      const volume = context.createGain();
-      tone.frequency.value = 660;
-      volume.gain.setValueAtTime(0.12, context.currentTime);
-      volume.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.24);
-      tone.connect(volume).connect(context.destination);
-      tone.start();
-      tone.stop(context.currentTime + 0.25);
-    }
+    if (context && !feed.requests.some((request) => request.id === incoming.requestId && request.allHands))
+      playPing(context);
     handled.current.add(incoming.offerId);
     automatic.current = incoming.offerId;
     void start(incoming);
-  }, [enabled, incoming, isOpen, phase, start]);
+  }, [enabled, feed.requests, incoming, isOpen, phase, start]);
 
   const inAutomaticOffer = isOpen && !!subject?.offerId && subject.offerId === automatic.current;
   useEffect(() => {
