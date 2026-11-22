@@ -4,6 +4,7 @@ import type { CrewMember, CrewOffer, RetryPlanResult } from '../../shared/crew/i
 import { allHandsDetails } from '../../shared/crew/index'
 import { planningReset } from './commands'
 import { conflict, notFound } from './input'
+import { closestMembers } from './proximity'
 import { crewTransaction, planLeaseMs, type CrewActor, type CrewDatabase, type CrewTransaction } from './store'
 
 interface PlanInput {
@@ -98,10 +99,10 @@ function offerWithFacts(request: RequestRow, proposal: ProposedOffer) {
   return { message: parts.join('\n'), pickupLocation, destination }
 }
 
-function eligibleMembers(tx: CrewTransaction, request: RequestRow, memberIds?: string[]) {
+function eligibleMembers(tx: CrewTransaction, request: RequestRow) {
   return tx.crewMember.findMany({
     where: {
-      id: { in: memberIds, not: request.requesterId },
+      id: { not: request.requesterId },
       crewId: request.crewId,
       availability: 'available',
       archivedAt: null,
@@ -138,11 +139,12 @@ export async function planRequest(
           Date.now() - +request.planStartedAt < planLeaseMs && newEvent === undefined) {
         return result(requestId, 'planning')
       }
-      const candidates = await eligibleMembers(tx, request)
-      if (!candidates.length) {
+      const eligible = await eligibleMembers(tx, request)
+      if (!eligible.length) {
         await setPlanningStatus(tx, requestId, 'waiting')
         return result(requestId, 'waiting')
       }
+      const nearby = closestMembers(eligible, request)
       const priorOffers = await tx.crewOffer.findMany({
         where: { requestId }, orderBy: { createdAt: 'asc' },
         select: { recipientId: true, status: true, message: true },
@@ -158,24 +160,23 @@ export async function planRequest(
       const { id, requesterId, title, latestFact, pickupLocation, destination, revision } = request
       const input: PlanInput = {
         request: { id, requesterId, title, latestFact, pickupLocation, destination },
-        revision, newEvent: latest, candidates, priorOffers,
-        ...(candidates.length > 1 && { maxOffers: 2 as const }),
+        revision, newEvent: latest, candidates: nearby ?? eligible, priorOffers,
+        ...(nearby && nearby.length > 1 && { maxOffers: 2 as const }),
       }
-      return { planAttemptId, input }
+      return { planAttemptId, input, hasNearbyMatch: !!nearby }
     })
     if (!('input' in started)) return started
 
-    const { input, planAttemptId } = started
+    const { input, planAttemptId, hasNearbyMatch } = started
     let proposal: PlanProposal | undefined
     try {
       proposal = readProposal(await planner(input), input)
     } catch {
       console.warn('Crew planner failed', { requestId, revision: input.revision })
     }
-    if (input.maxOffers === 2 && (!proposal || proposal.action === 'wait')) {
-      // An explicit request for two offers can use the active roster when the planner has no picks.
-      proposal = { action: 'offer', offers: input.candidates.slice(0, 2).map(({ id }) => fallbackOffer(input.request, id)) }
-      console.info('Offering the handoff to two available teammates using the crew roster.', { requestId, revision: input.revision })
+    if ((hasNearbyMatch || input.candidates.length > 1) && (!proposal || proposal.action === 'wait')) {
+      proposal = { action: 'offer', offers: input.candidates.slice(0, input.maxOffers ?? 1).map(({ id }) => fallbackOffer(input.request, id)) }
+      console.info('Offering the handoff using the active crew roster.', { requestId, revision: input.revision })
     }
     const outcome = await crewTransaction(db, actor.crewId, async (tx) => {
       const request = await tx.crewRequest.findFirst({
@@ -188,8 +189,11 @@ export async function planRequest(
         await setPlanningStatus(tx, requestId, status)
         return status
       }
-      const members = await eligibleMembers(tx, request, proposal.offers.map(({ memberId }) => memberId))
-      if (members.length !== proposal.offers.length) {
+      const eligible = await eligibleMembers(tx, request)
+      const nearby = closestMembers(eligible, request)
+      const members = (nearby ?? eligible).filter(({ id }) => proposal.offers.some(({ memberId }) => memberId === id))
+      const expectedCount = nearby && nearby.length > 1 ? 2 : 1
+      if (!!nearby !== hasNearbyMatch || expectedCount !== members.length || members.length !== proposal.offers.length) {
         await setPlanningStatus(tx, requestId, 'waiting')
         return 'candidate_changed'
       }

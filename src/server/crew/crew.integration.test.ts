@@ -113,15 +113,17 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     return { status: res.status, data: await res.json() }
   }
 
-  async function fixture() {
+  const roomB = { alexLocation: 'Room B', mayaLocation: 'Room B' }
+
+  async function fixture({ alexLocation = 'Projector', mayaLocation = 'Registration' } = {}) {
     const crewCode = randomUUID()
     await db.crew.create({
       data: {
         code: crewCode, name: 'QA Crew',
         members: { create: [
           { profileCode: 'jo', name: 'Jo', location: 'Room B', availability: 'busy', skills: [] },
-          { profileCode: 'alex', name: 'Alex', location: 'Projector', availability: 'available', skills: ['AV'] },
-          { profileCode: 'maya', name: 'Maya', location: 'Registration', availability: 'available', skills: ['Runner'] },
+          { profileCode: 'alex', name: 'Alex', location: alexLocation, availability: 'available', skills: ['AV'] },
+          { profileCode: 'maya', name: 'Maya', location: mayaLocation, availability: 'available', skills: ['Runner'] },
           { profileCode: 'jules', name: 'Jules', location: 'Entrance', availability: 'protected', skills: [] },
         ] },
       },
@@ -209,7 +211,7 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
   })
 
   await t.test('independent voice offers stay live when one teammate declines', async () => {
-    const { jo, alex, maya } = await fixture()
+    const { jo, alex, maya } = await fixture(roomB)
     const callsBefore = modelCalls
     const { status, data } = await event(jo, { kind: 'request_help', text: 'Bring a cable to Room B.' })
     assert.equal(status, 200)
@@ -244,13 +246,13 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
   })
 
   await t.test('expired browser activity is excluded and simultaneous accepts have one winner', async () => {
-    const { jo, alex, maya, crewCode } = await fixture()
+    const { jo, alex, maya, crewCode } = await fixture(roomB)
     const { id: crewId } = await db.crew.findUniqueOrThrow({ where: { code: crewCode } })
     await db.crewMember.create({ data: {
       crewId, profileCode: 'offline', name: 'Absent', location: 'Room B', availability: 'available', skills: [],
       lastSeenAt: new Date(Date.now() - 60_000),
     } })
-    assert.equal((await event(jo, { kind: 'request_help', text: 'Need help with a table.' })).status, 200)
+    assert.equal((await event(jo, { kind: 'request_help', text: 'Need help with a table in Room B.' })).status, 200)
     assert.deepEqual(planningInput?.candidates.map(({ name }) => name), ['Alex', 'Maya'])
     const [first] = (await feed(alex)).myOffers
     const [second] = (await feed(maya)).myOffers
@@ -288,7 +290,7 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
   })
 
   await t.test('a planner timeout still dispatches two offers for active available teammates', async () => {
-    const { jo, alex, maya } = await fixture()
+    const { jo, alex, maya } = await fixture(roomB)
     stallNext = true
     assert.equal((await event(jo, { kind: 'request_help', text: 'Bring the network cable to room B.' })).status, 200)
     const [first] = (await feed(alex)).myOffers
@@ -300,9 +302,9 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
   })
 
   await t.test('a planner gateway error still dispatches a pair', async () => {
-    const { jo, alex, maya } = await fixture()
+    const { jo, alex, maya } = await fixture(roomB)
     failNext = true
-    assert.equal((await event(jo, { kind: 'request_help', text: 'Bring a charger to the help desk.' })).status, 200)
+    assert.equal((await event(jo, { kind: 'request_help', text: 'Bring a charger to the Room B help desk.' })).status, 200)
     const [first] = (await feed(alex)).myOffers
     const [second] = (await feed(maya)).myOffers
     assert.equal(first.status, 'pending')
@@ -311,11 +313,11 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
   })
 
   await t.test('a superseded planner reply cannot write an offer and double declines leave it open', async () => {
-    const { jo, alex, maya, jules } = await fixture()
+    const { jo, alex, maya, jules } = await fixture(roomB)
     holdNext = true
-    const pending = event(jo, { kind: 'request_help', text: 'We need help moving a table.' })
+    const pending = event(jo, { kind: 'request_help', text: 'We need help moving a table in Room B.' })
     await waitFor(() => held !== undefined)
-    const update = await event(maya, { kind: 'availability_update', availability: 'available', location: 'Side door' })
+    const update = await event(maya, { kind: 'availability_update', availability: 'available', location: 'Room B' })
     assert.equal(update.status, 200)
     const [offer] = (await feed(alex)).myOffers
     assert.ok(offer)
@@ -332,6 +334,35 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     assert.equal(request.planningStatus, 'waiting')
     assert.equal(modelCalls, callsBefore)
     assert.deepEqual((await feed(jules)).myOffers, [])
+  })
+
+  await t.test('a fifth-floor request alerts the nearby teammate and excludes check-in, even on planner failure', async () => {
+    const { jo, alex, maya } = await fixture({ alexLocation: '5th floor', mayaLocation: 'Check-in' })
+    await event(jo, { kind: 'availability_update', availability: 'available', location: '5th floor' })
+    failNext = true
+    const request = await event(jo, { kind: 'request_help', text: 'I need help on the fifth floor.' })
+    assert.equal(request.status, 200)
+    assert.deepEqual(planningInput?.candidates.map(({ name }) => name), ['Alex'])
+    assert.equal((await feed(alex)).myOffers[0].requestId, request.data.requestId)
+    assert.deepEqual((await feed(maya)).myOffers, [])
+    assert.deepEqual((await feed(jo)).myOffers, [])
+  })
+
+  await t.test('two equally close floors can both receive the offer', async () => {
+    const { jo, alex, maya } = await fixture({ alexLocation: 'fourth floor', mayaLocation: 'Level 6' })
+    const request = await event(jo, { kind: 'request_help', text: 'Someone needs help.', location: 'Floor 5' })
+    assert.equal(request.status, 200)
+    assert.equal((await feed(alex)).myOffers[0].requestId, request.data.requestId)
+    assert.equal((await feed(maya)).myOffers[0].requestId, request.data.requestId)
+  })
+
+  await t.test('a request with no known proximity sends a single offer', async () => {
+    const { jo, alex, maya } = await fixture()
+    failNext = true
+    const request = await event(jo, { kind: 'request_help', text: 'Help with an adapter.' })
+    assert.equal(request.status, 200)
+    assert.equal((await feed(alex)).myOffers[0].requestId, request.data.requestId)
+    assert.deepEqual((await feed(maya)).myOffers, [])
   })
 
   await t.test('archiving removes the profile and active request while retaining history', async () => {
