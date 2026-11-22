@@ -53,10 +53,9 @@ UI falls back to a typed profile code.
 
 Put `REACT_APP_CREW_ADAPTER=fixture` in a local `.env.client`. Do not commit
 it. Sample data then lives in `localStorage` and is shared across tabs, so a
-phone tab and a board tab see the same crew. The crew code is `demo`. Without
-the flag the fixture module is never imported, and a production build contains
-no fixture data. Fixture voice sessions fail on purpose, which exercises the
-typed fallback.
+phone tab and a board tab see the same crew. The crew code is `demo`. Production
+always uses the HTTP adapter. Fixture voice sessions fail on purpose, which
+exercises the typed fallback.
 
 ## Behaviour notes
 

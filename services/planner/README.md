@@ -1,6 +1,6 @@
 # Crew Radio coordinator
 
-Deploy this directory as the container build context on Maritime. For a ZIP deploy, put its contents at the archive root. Use Maritime's injected `PORT`. The public Web Agent URL needs to be reachable from Wasp. The planning route requires an application token. [Maritime custom containers](https://maritime.sh/docs/frameworks/custom) · [Maritime Web Agents](https://maritime.sh/docs/web-apps)
+On Maritime, create a public Web Agent from a ZIP with `Dockerfile`, `server.ts`, and `.dockerignore` at its root. From the repo root, make one with `(cd services/planner && zip ../../crew-radio-planner.zip Dockerfile server.ts .dockerignore)`. Leave the public port at Maritime's default and let it inject `PORT`. The planning route requires an application token. [Maritime custom containers](https://maritime.sh/docs/frameworks/custom) · [Maritime Web Agents](https://maritime.sh/docs/web-apps)
 
 Set these in Maritime's secret and environment settings.
 
@@ -8,7 +8,9 @@ Set these in Maritime's secret and environment settings.
 | --- | --- |
 | `CREW_PLANNER_TOKEN` | Random secret shared with the Wasp server |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | Provided by **Use Maritime LLM** or your OpenAI-compatible provider. Include its API version path in the base URL. |
-| `CREW_PLANNER_MODEL` | A model offered by that endpoint that supports Chat Completions JSON mode |
+| `CREW_PLANNER_MODEL` | Start with `gpt-5-mini` on Maritime LLM, or use another model on your endpoint that supports Chat Completions JSON mode |
+
+For a custom container, select **Use Maritime LLM** on the agent's **Env** tab and restart it after setting the variables. `MARITIME_API_KEY` is for deploying and managing agents. The planner's model calls use the separate per-agent `OPENAI_API_KEY` and `OPENAI_BASE_URL`. [Maritime LLM setup](https://maritime.sh/docs/llm)
 
 Set Wasp's `CREW_PLANNER_URL` to the full HTTPS URL ending in `/plan`, and set the same `CREW_PLANNER_TOKEN` in Wasp's server environment. The public `GET /health` returns `{"ok":true}`. The protected `POST /plan` uses an Authorization bearer token. Maritime's `POST /chat` contract also works with the planning JSON as its `message` and the same secret in `context.crew_planner_token`.
 
@@ -19,7 +21,7 @@ node services/planner/server.ts
 curl -fsS http://127.0.0.1:8787/health
 ```
 
-Example planning input:
+Before the demo, send a real authenticated `POST /plan` with at least one candidate and expect a valid `offer` or `wait` with the same request ID and revision. The health endpoint and an empty candidate list can pass without reaching the model. Use the following as the request body.
 
 ```json
 {
