@@ -28,6 +28,7 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
   let conversationId = ''
   let modelCalls = 0
   let stallNext = false
+  let failNext = false
   let holdNext = false
   let held: (() => void) | undefined
   let planningInput: { candidates: Array<{ id: string; name: string }> } | undefined
@@ -40,6 +41,11 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     modelCalls += 1
     if (stallNext) {
       stallNext = false
+      return
+    }
+    if (failNext) {
+      failNext = false
+      res.writeHead(502).end()
       return
     }
     const modelChoice = input.candidates[0]
@@ -291,6 +297,17 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     assert.ok(second.message.includes('network cable'))
     assert.equal(first.requestId, second.requestId)
     assert.equal((await feed(jo)).requests[0].status, 'offered')
+  })
+
+  await t.test('a planner gateway error still dispatches a pair', async () => {
+    const { jo, alex, maya } = await fixture()
+    failNext = true
+    assert.equal((await event(jo, { kind: 'request_help', text: 'Bring a charger to the help desk.' })).status, 200)
+    const [first] = (await feed(alex)).myOffers
+    const [second] = (await feed(maya)).myOffers
+    assert.equal(first.status, 'pending')
+    assert.equal(second.status, 'pending')
+    assert.equal(first.requestId, second.requestId)
   })
 
   await t.test('a superseded planner reply cannot write an offer and double declines leave it open', async () => {

@@ -161,13 +161,13 @@ export async function planRequest(
     let proposal: PlanProposal | undefined
     try {
       proposal = readProposal(await planner(input), input)
-    } catch (error) {
-      if (input.maxOffers === 2 && error instanceof Error && error.name === 'TimeoutError') {
-        proposal = { action: 'offer', offers: input.candidates.slice(0, 2).map(({ id }) => fallbackOffer(input.request, id)) }
-        console.warn('Crew planner timed out. Offering the handoff to available teammates.', { requestId, revision: input.revision })
-      } else {
-        console.warn('Crew planner failed', { requestId, revision: input.revision })
-      }
+    } catch {
+      console.warn('Crew planner failed', { requestId, revision: input.revision })
+    }
+    if (input.maxOffers === 2 && (!proposal || proposal.action === 'wait')) {
+      // An explicit request for two offers can use the active roster when the planner has no picks.
+      proposal = { action: 'offer', offers: input.candidates.slice(0, 2).map(({ id }) => fallbackOffer(input.request, id)) }
+      console.info('Offering the handoff to two available teammates using the crew roster.', { requestId, revision: input.revision })
     }
     const outcome = await crewTransaction(db, actor.crewId, async (tx) => {
       const request = await tx.crewRequest.findFirst({ where: { id: requestId, crewId: actor.crewId } })
@@ -220,7 +220,6 @@ export const maritimePlanner: Planner = async (input) => {
   })
   if (!response.ok) {
     console.warn('Crew planner returned an HTTP error', { status: response.status })
-    if (response.status === 504) throw new DOMException('Crew planner timed out', 'TimeoutError')
     throw new Error('Planner refused the request')
   }
   return response.json()
