@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import type { CrewMember } from '@prisma/client'
 import type { VoiceSessionInput, VoiceSessionResult } from '../../shared/crew/index'
+import { allHandsSpeech } from '../../shared/crew/index'
 import { recordCommand } from './commands'
 import { conflict, CrewError, invalid, notFound, parseCommand } from './input'
 import { crewTransaction, secretToken, tokenHash, type CrewDatabase, type CrewTransaction } from './store'
@@ -36,6 +37,17 @@ export const getElevenLabsToken: ElevenLabsToken = async () => {
 }
 
 async function voiceContext(db: Pick<CrewTransaction, 'crewRequest'>, member: CrewMember, input: VoiceSessionInput) {
+  if (input.announcementId) {
+    if (input.requestId || input.offerId) invalid('Choose one voice session subject.')
+    const request = await db.crewRequest.findFirst({
+      where: {
+        id: input.announcementId, crewId: member.crewId, archivedAt: null, allHands: true,
+        requesterId: { not: member.id },
+      },
+    })
+    if (!request) notFound('Announcement was not found.')
+    return { request, offer: undefined }
+  }
   if (!input.requestId && !input.offerId) return {}
   const request = await db.crewRequest.findFirst({
     where: {
@@ -78,16 +90,22 @@ export async function startVoiceSession(
     })
     return context
   })
+  const announcement = request?.allHands ? request : undefined
+  const openingMessage = announcement
+    ? `${allHandsSpeech(announcement.title, announcement.destination)} Let me know when you’ve heard it.`
+    : offer?.status === 'pending'
+      ? `Hi ${member.name}. ${offer.message}`
+      : `Hi ${member.name}. What would you like to tell the crew?`
   return {
     conversationToken: token,
     dynamicVariables: {
       secret__crew_ticket: ticket,
       member_name: member.name,
-      opening_message: offer?.status === 'pending'
-        ? `Hi ${member.name}. ${offer.message}`
-        : `Hi ${member.name}. What would you like to tell the crew?`,
+      opening_message: openingMessage,
       offer_context: offer?.message ?? '',
-      request_context: request ? [
+      request_context: announcement
+        ? `Crew-wide announcement acknowledgment. You are speaking with a recipient. ${announcement.title}`
+        : request ? [
         request.title, request.destination && `Destination: ${request.destination}`,
         request.pickupLocation && `Pickup: ${request.pickupLocation}`, request.latestFact,
         `Status: ${request.status}`,
@@ -109,17 +127,20 @@ export async function recordVoiceTool(
 ) {
   const ticket = token && /^[\w-]{43}$/.test(token) && await db.crewVoiceTicket.findUnique({
     where: { tokenHash: tokenHash(token) },
-    include: { member: { select: { crewId: true, sessionHash: true } } },
+    include: { member: { select: { crewId: true, sessionHash: true } }, request: { select: { allHands: true } } },
   })
   if (!ticket || ticket.conversationId !== conversationId || !ticket.member.sessionHash ||
       +ticket.expiresAt <= Date.now()) {
     throw new CrewError(401, 'unauthorized', 'This voice session is invalid or has expired.')
   }
-  if ('requestId' in body || 'offerId' in body || 'memberId' in body || 'eventId' in body) {
+  if ('requestId' in body || 'offerId' in body || 'announcementId' in body || 'memberId' in body || 'eventId' in body) {
     invalid('The voice session supplies the action scope.')
   }
   const globalCommand = body.kind === 'request_help' || body.kind === 'availability_update'
   if (globalCommand === Boolean(ticket.requestId)) conflict('Start a voice session for the action you want to take.')
+  if ((body.kind === 'acknowledge_announcement') !== Boolean(ticket.request?.allHands)) {
+    conflict('Start a voice session for the action you want to take.')
+  }
   const command = parseCommand({ ...body, requestId: ticket.requestId ?? undefined, offerId: ticket.offerId ?? undefined })
   const actor = { id: ticket.memberId, crewId: ticket.member.crewId }
   const recorded = await crewTransaction(db, actor.crewId, (tx) => recordCommand(tx, actor, `voice:${ticket.id}`, command))

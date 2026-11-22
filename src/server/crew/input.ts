@@ -48,6 +48,8 @@ export function parseCommand(body: Record<string, unknown>): CrewCommand {
   switch (body.kind) {
     case 'request_help':
       return { kind: body.kind, text: text ?? invalid('Describe the help you need.'), location }
+    case 'acknowledge_announcement':
+      return { kind: body.kind, requestId: requestId ?? invalid('Provide the announcement ID.'), text }
     case 'availability_update': {
       const availability = body.availability
       if (availability !== undefined && availability !== 'available' && availability !== 'busy') {

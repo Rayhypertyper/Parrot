@@ -1,19 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import type { Feed } from "../crew/contract";
 import { Button } from "../ui/primitives";
-import { isVoiceActive, useVoice } from "./VoiceProvider";
+import { isVoiceActive, useVoice, type VoiceSubject } from "./VoiceProvider";
 import { playPing } from "./ping";
 import { voiceSubjects } from "./subjects";
 
-export function HandsFreeOffers({ feed }: { feed: Feed }) {
+export function HandsFreeOffers({ feed, enabled, setEnabled }: {
+  feed: Feed;
+  enabled: boolean;
+  setEnabled: (enabled: boolean) => void;
+}) {
   const { close, isOpen, phase, recorded, start, subject } = useVoice();
   const audio = useRef<AudioContext | null>(null);
   const handled = useRef(new Set<string>());
   const automatic = useRef<string | undefined>(undefined);
-  const [enabled, setEnabled] = useState(false);
   const [enabling, setEnabling] = useState(false);
   const [denied, setDenied] = useState(false);
-  const incoming = voiceSubjects(feed).find((item) => item.offerId && !handled.current.has(item.offerId));
+  const announcement = feed.requests.find((request) => request.allHands && request.status === "open" &&
+    request.requesterId !== feed.me.id && !handled.current.has(request.id));
+  const incoming: VoiceSubject | undefined = announcement
+    ? { label: "All hands on deck", announcementId: announcement.id }
+    : voiceSubjects(feed).find((item) => item.offerId && !handled.current.has(item.offerId));
+  const incomingId = incoming?.announcementId ?? incoming?.offerId;
 
   const stop = () => {
     const context = audio.current;
@@ -24,6 +32,10 @@ export function HandsFreeOffers({ feed }: { feed: Feed }) {
   useEffect(() => stop, []);
 
   async function enable() {
+    // Announcements already visible when Hands-free is enabled can be replayed from their banner.
+    feed.requests.forEach((request) => {
+      if (request.allHands) handled.current.add(request.id);
+    });
     setEnabling(true);
     setDenied(false);
     let context: AudioContext | undefined;
@@ -50,46 +62,46 @@ export function HandsFreeOffers({ feed }: { feed: Feed }) {
   }, [isOpen]);
 
   useEffect(() => {
-    if (!enabled || isOpen || isVoiceActive(phase) || document.hidden || !incoming?.offerId) return;
+    if (!enabled || isOpen || isVoiceActive(phase) || document.hidden || !incoming || !incomingId) return;
     const context = audio.current;
-    if (context && !feed.requests.some((request) => request.id === incoming.requestId && request.allHands))
-      playPing(context);
-    handled.current.add(incoming.offerId);
-    automatic.current = incoming.offerId;
+    if (context) playPing(context, incoming.announcementId ? 880 : 660);
+    handled.current.add(incomingId);
+    automatic.current = incomingId;
     void start(incoming);
-  }, [enabled, feed.requests, incoming, isOpen, phase, start]);
+  }, [enabled, incoming, incomingId, isOpen, phase, start]);
 
-  const inAutomaticOffer = isOpen && !!subject?.offerId && subject.offerId === automatic.current;
+  const subjectId = subject?.announcementId ?? subject?.offerId;
+  const inAutomaticSession = isOpen && !!subjectId && subjectId === automatic.current;
   useEffect(() => {
     function onHidden() {
       if (!document.hidden) return;
-      if (inAutomaticOffer) close();
+      if (inAutomaticSession) close();
       setEnabled(false);
       stop();
     }
     document.addEventListener("visibilitychange", onHidden);
     return () => document.removeEventListener("visibilitychange", onHidden);
-  }, [inAutomaticOffer, close]);
+  }, [inAutomaticSession, close, setEnabled]);
 
   useEffect(() => {
-    if (!inAutomaticOffer || !recorded) return;
+    if (!inAutomaticSession || !recorded) return;
     const timer = window.setTimeout(close, 5_000);
     return () => window.clearTimeout(timer);
-  }, [inAutomaticOffer, recorded, close]);
+  }, [inAutomaticSession, recorded, close]);
 
   const active = isVoiceActive(phase);
   useEffect(() => {
-    if (!inAutomaticOffer || !active || recorded) return;
+    if (!inAutomaticSession || !active || recorded) return;
     const timer = window.setTimeout(close, 60_000);
     return () => window.clearTimeout(timer);
-  }, [inAutomaticOffer, active, recorded, close]);
+  }, [inAutomaticSession, active, recorded, close]);
 
   return (
     <section className="cr-me" aria-label="Hands-free offers">
       <div>
         <p className="cr-me__name">Hands-free offers</p>
         <p className="cr-me__loc" role="status">
-          {denied ? "Allow microphone access or use Talk." : enabled ? "On. Keep this page open." : "Beep and open the mic for incoming offers."}
+          {denied ? "Allow microphone access or use Talk." : enabled ? "On. Keep this page open." : "Open the mic for offers and all-hands announcements."}
         </p>
       </div>
       <Button
@@ -101,7 +113,7 @@ export function HandsFreeOffers({ feed }: { feed: Feed }) {
           else {
             setEnabled(false);
             stop();
-            if (inAutomaticOffer) close();
+            if (inAutomaticSession) close();
           }
         }}
       >

@@ -32,12 +32,14 @@ export async function recordCommand(
 ): Promise<RecordedCommand> {
   const member = await tx.crewMember.findUniqueOrThrow({ where: { id: actor.id } })
   if (member.archivedAt) throw new CrewError(401, 'unauthorized', 'Join the crew to continue.')
+  const acknowledgment = command.kind === 'acknowledge_announcement'
+  const eventKey = acknowledgment ? `announcement:${command.requestId}` : eventId
   const previous = await tx.crewEventRecord.findUnique({
-    where: { memberId_eventId: { memberId: actor.id, eventId } },
+    where: { memberId_eventId: { memberId: actor.id, eventId: eventKey } },
   })
   const serialized = JSON.parse(JSON.stringify(command)) as Prisma.InputJsonObject
   if (previous) {
-    if (!sameCommand(previous.command, serialized)) conflict('This event ID has already been used for another update.')
+    if (!acknowledgment && !sameCommand(previous.command, serialized)) conflict('This event ID has already been used for another update.')
     return {
       response: { eventId, requestId: previous.requestId ?? undefined, result: 'applied', message: previous.message },
       plan: [],
@@ -46,7 +48,7 @@ export async function recordCommand(
 
   const { requestId, message, summary, plan } = await applyCommand(tx, member, command)
   await tx.crewEventRecord.create({
-    data: { eventId, memberId: member.id, requestId, command: serialized, message, createdAt: new Date() },
+    data: { eventId: eventKey, memberId: member.id, requestId, command: serialized, message, createdAt: new Date() },
   })
   await tx.crewActivity.create({
     data: { crewId: member.crewId, requestId, actorName: member.name, summary },
@@ -68,6 +70,17 @@ async function applyCommand(tx: CrewTransaction, member: CrewMember, command: Cr
     }
     case 'availability_update':
       return changeAvailability(tx, member, command)
+    case 'acknowledge_announcement': {
+      const request = await tx.crewRequest.findFirst({
+        where: { id: command.requestId, crewId: member.crewId, allHands: true, archivedAt: null, requesterId: { not: member.id } },
+        select: { id: true },
+      })
+      if (!request) notFound('Announcement was not found.')
+      return {
+        requestId: request.id, message: 'Acknowledgment recorded.',
+        summary: ['Acknowledged the crew announcement.', command.text].filter(Boolean).join(' '), plan: [],
+      }
+    }
     case 'accept':
     case 'decline':
       return replyToOffer(tx, member, command)

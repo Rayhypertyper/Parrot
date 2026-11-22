@@ -5,9 +5,11 @@ import { useCrew } from "../crew/CrewProvider";
 import { memberById } from "../crew/derive";
 import { IconAlert, IconX } from "../ui/icons";
 import { playPing } from "../voice/ping";
+import { useVoice } from "../voice/VoiceProvider";
 
-export function AllHandsAlerts({ feed }: { feed: Feed }) {
+export function AllHandsAlerts({ feed, handsFree }: { feed: Feed; handsFree: boolean }) {
   const { api, session } = useCrew();
+  const { phase, subject } = useVoice();
   const storageKey = `crew-radio:all-hands:${feed.me.id}`;
   const [dismissed, setDismissed] = useState<string[]>(() => {
     try {
@@ -23,6 +25,12 @@ export function AllHandsAlerts({ feed }: { feed: Feed }) {
   const announced = useRef(new Set<string>());
   const alerts = feed.requests.filter((request) => request.allHands && !dismissed.includes(request.id));
   const latest = feed.requests.find((request) => request.allHands && request.status === "open");
+
+  useEffect(() => {
+    if (subject?.announcementId && (phase === "listening" || phase === "speaking")) {
+      announced.current.add(subject.announcementId);
+    }
+  }, [phase, subject]);
 
   useEffect(() => {
     function prepareAudio() {
@@ -69,11 +77,11 @@ export function AllHandsAlerts({ feed }: { feed: Feed }) {
   }, [api, session]);
 
   useEffect(() => {
-    if (!audioReady || audio.current?.state !== "running" || document.hidden || !latest ||
+    if (handsFree || !audioReady || audio.current?.state !== "running" || document.hidden || !latest ||
         latest.requesterId === feed.me.id || dismissed.includes(latest.id) || announced.current.has(latest.id)) return;
     announced.current.add(latest.id);
     void playAnnouncement(latest, true);
-  }, [latest, dismissed, audioReady, feed.me.id, playAnnouncement]);
+  }, [handsFree, latest, dismissed, audioReady, feed.me.id, playAnnouncement]);
 
   function dismiss(id: string) {
     const next = [...dismissed, id];

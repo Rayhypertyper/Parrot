@@ -89,6 +89,7 @@ export interface CrewSession {
 
 export type CrewCommand =
   | { kind: 'request_help'; text: string; location?: string }
+  | { kind: 'acknowledge_announcement'; requestId: string; text?: string }
   | { kind: 'availability_update'; availability?: 'available' | 'busy'; location?: string; text?: string }
   | { kind: 'accept'; requestId?: string; offerId: string }
   | { kind: 'decline'; requestId?: string; offerId: string; text?: string; location?: string }
@@ -108,6 +109,7 @@ export interface CrewEventResult {
 export interface VoiceSessionInput {
   requestId?: string
   offerId?: string
+  announcementId?: string
 }
 
 export interface VoiceSessionResult {

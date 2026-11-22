@@ -75,7 +75,7 @@ export function createCrewHandlers(
       const member = await getMember(db, req.get('authorization'))
       const body = bodyObject(req.body ?? {})
       return startVoiceSession(db, member, {
-        requestId: field(body, 'requestId'), offerId: field(body, 'offerId'),
+        requestId: field(body, 'requestId'), offerId: field(body, 'offerId'), announcementId: field(body, 'announcementId'),
       }, voiceToken)
     }),
     voiceTool: endpoint(async (req) => {

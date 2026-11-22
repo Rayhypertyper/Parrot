@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { CrewShell, usePageTitle } from "./CrewShell";
 import type { Feed } from "./crew/contract";
 import { useCrew } from "./crew/CrewProvider";
@@ -30,6 +30,8 @@ export default PhonePage;
 
 function PhoneHome({ feed }: { feed: Feed }) {
   const voice = useVoice();
+  const [handsFree, setHandsFree] = useState(false);
+  const announcementMicFailed = voice.subject?.announcementId && voice.phase === "error";
   const { leave, session } = useCrew();
   const crewLabel = feed.crewName ?? `Crew ${session?.crewCode ?? ""}`.trim();
   const askRef = useRef<HTMLTextAreaElement>(null);
@@ -65,8 +67,8 @@ function PhoneHome({ feed }: { feed: Feed }) {
         <AvailabilityControl me={feed.me} />
       </section>
 
-      <NoticeBar />
-      <HandsFreeOffers feed={feed} />
+      <NoticeBar handsFreeAnnouncements={handsFree && !announcementMicFailed} />
+      <HandsFreeOffers feed={feed} enabled={handsFree} setEnabled={setHandsFree} />
 
       <main className="cr-phone__main">
         {offers.map(({ offer, request }) => (

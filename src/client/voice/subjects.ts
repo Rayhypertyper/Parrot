@@ -18,4 +18,4 @@ export function voiceSubjects(feed: Feed): VoiceSubject[] {
 }
 
 export const sameSubject = (a: VoiceSubject | null, b: VoiceSubject) =>
-  !!a && a.requestId === b.requestId && a.offerId === b.offerId;
+  !!a && a.requestId === b.requestId && a.offerId === b.offerId && a.announcementId === b.announcementId;

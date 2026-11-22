@@ -3,6 +3,7 @@
 // It follows the state rules in the brief closely enough to exercise every
 // UI state, including 409s on stale offers and duplicate event IDs.
 import { CrewApiError, type CrewApi } from "../api";
+import { allHandsDetails } from "../../../shared/crew/index";
 import type {
   ActivityItem,
   CrewEventBody,
@@ -155,23 +156,35 @@ function apply(db: Db, me: Member, body: CrewEventBody): CrewEventResult {
     case "request_help": {
       const text = body.text?.trim();
       if (!text) throw new CrewApiError("Say what you need and where.", 400);
+      const allHands = allHandsDetails(text) !== null;
       const r: CrewRequest = {
         id: id(db, "r"),
         title: text.replace(/[.!?]+$/, ""),
+        ...(allHands && { allHands: true }),
         requesterId: me.id,
         status: "open",
         revision: 1,
         assigneeId: null,
         latestFact: null,
         pickupLocation: null,
-        destination: body.location?.trim() || me.location,
-        planningStatus: "planning",
+        destination: body.location?.trim() || (allHands ? null : me.location),
+        planningStatus: allHands ? "idle" : "planning",
         updatedAt: now(),
       };
       db.requests.unshift(r);
+      if (allHands) {
+        log(db, me.name, r.title, r.id);
+        return ok("All-hands alert sent.", r.id);
+      }
       log(db, me.name, `Asked for help: ${r.title}`, r.id);
       schedulePlan(r.id);
       return ok("Request recorded. Looking for someone to help.", r.id);
+    }
+    case "acknowledge_announcement": {
+      if (!req?.allHands || req.requesterId === me.id)
+        throw new CrewApiError("Announcement was not found.", 404);
+      log(db, me.name, "Acknowledged the crew announcement.", req.id);
+      return ok("Acknowledgment recorded.", req.id);
     }
     case "availability_update": {
       if (me.availability === "protected")
@@ -330,7 +343,7 @@ export const fixtureAdapter: CrewApi = {
     const db = load();
     memberFor(db, token);
     const r = db.requests.find((x) => x.id === requestId);
-    if (!r || r.status !== "open")
+    if (!r || r.allHands || r.status !== "open")
       throw stale("This request isn't open any more.");
     if (r.planningStatus === "planning")
       return { requestId, result: "planning", message: "Already looking for help." };

@@ -41,11 +41,11 @@ export function LinkStatus({ detailed }: { detailed?: boolean }) {
   );
 }
 
-export function NoticeBar() {
+export function NoticeBar({ handsFreeAnnouncements = false }: { handsFreeAnnouncements?: boolean }) {
   const { feed, notice, say } = useCrew();
   return (
     <div className="cr-notice-slot" aria-live="polite">
-      {feed && <AllHandsAlerts key={feed.me.id} feed={feed} />}
+      {feed && <AllHandsAlerts key={feed.me.id} feed={feed} handsFree={handsFreeAnnouncements} />}
       {notice && (
         <div className={`cr-notice cr-notice--${notice.tone}`} key={notice.at}>
           {notice.tone !== "ok" ? <IconAlert size={18} /> : <IconCheck size={18} />}

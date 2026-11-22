@@ -437,5 +437,31 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     const otherCrew = await fixture()
     assert.equal((await feed(otherCrew.jo)).requests.length, 0)
     assert.equal((await call(audioPath, undefined, otherCrew.jo)).status, 404)
+    assert.equal((await call(crewRoutes.voiceSession, { announcementId: voice.data.requestId }, otherCrew.jo)).status, 404)
+    assert.equal((await call(crewRoutes.voiceSession, { announcementId: voice.data.requestId }, jo)).status, 404)
+
+    const acknowledgmentHeaders = []
+    for (const recipient of [alex, maya, jules]) {
+      const mic = await call(crewRoutes.voiceSession, { announcementId: voice.data.requestId }, recipient)
+      assert.equal(mic.status, 200)
+      assert.match(mic.data.dynamicVariables.opening_message, /floor 2/)
+      assert.match(mic.data.dynamicVariables.request_context, /Crew-wide announcement acknowledgment/)
+      acknowledgmentHeaders.push({
+        'x-crew-webhook-secret': process.env.ELEVENLABS_WEBHOOK_SECRET,
+        'x-crew-ticket': mic.data.dynamicVariables.secret__crew_ticket,
+        'x-elevenlabs-conversation-id': conversationId,
+      })
+    }
+    assert.equal(new Set(acknowledgmentHeaders.map(headers => headers['x-elevenlabs-conversation-id'])).size, 3)
+    assert.equal((await call(crewRoutes.voiceTool, { kind: 'request_help', text: 'A second unrelated request' }, undefined, acknowledgmentHeaders[0])).status, 409)
+    await Promise.all(acknowledgmentHeaders.map(async headers => {
+      const response = await call(crewRoutes.voiceTool, { kind: 'acknowledge_announcement', text: 'I heard it.' }, undefined, headers)
+      assert.equal(response.status, 200)
+      assert.equal(response.data.requestId, voice.data.requestId)
+    }))
+    assert.equal((await event(alex, { kind: 'acknowledge_announcement', requestId: voice.data.requestId })).status, 200)
+    assert.equal((await feed(jo)).activity.filter((entry) =>
+      entry.requestId === voice.data.requestId && entry.summary.startsWith('Acknowledged the crew announcement.')).length, 3)
+    assert.equal(modelCalls, callsBefore)
   })
 })

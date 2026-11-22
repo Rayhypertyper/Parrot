@@ -14,10 +14,12 @@ export function VoiceSheet({ feed, showSubjectPicker = true }: { feed: Feed; sho
   const v = useVoice();
   const [typing, setTyping] = useState(false);
   const active = isVoiceActive(v.phase);
-  const subjects = showSubjectPicker ? voiceSubjects(feed) : [];
+  const pinnedAnnouncement = v.subject?.announcementId ? v.subject : undefined;
+  const showPicker = showSubjectPicker && !pinnedAnnouncement;
+  const subjects = showPicker ? voiceSubjects(feed) : [];
   // If the feed moved on (offer accepted elsewhere, request finished), follow
   // the same request where possible instead of pointing at a stale offer.
-  const subject = showSubjectPicker
+  const subject = showPicker
     ? subjects.find((s) => sameSubject(v.subject, s)) ??
       (active ? v.subject : null) ??
       subjects.find((s) => v.subject?.requestId && s.requestId === v.subject.requestId) ??
@@ -25,9 +27,9 @@ export function VoiceSheet({ feed, showSubjectPicker = true }: { feed: Feed; sho
     : v.subject ?? newVoiceSubject;
   const { setSubject } = v;
   useEffect(() => {
-    if (showSubjectPicker && !active && !sameSubject(v.subject, subject)) setSubject(subject);
-  }, [showSubjectPicker, active, v.subject, subject, setSubject]);
-  const dashboardComposer = !showSubjectPicker && !subject.requestId && !subject.offerId;
+    if (showPicker && !active && !sameSubject(v.subject, subject)) setSubject(subject);
+  }, [showPicker, active, v.subject, subject, setSubject]);
+  const dashboardComposer = !showSubjectPicker && !subject.requestId && !subject.offerId && !subject.announcementId;
   const showTyping = dashboardComposer || typing || v.error !== null;
   const finish = () => {
     setTyping(false);
@@ -153,6 +155,17 @@ function ManualUpdate({ feed, subject, onDone, onType }: {
   const [note, setNote] = useState("");
   const request = requestById(feed, subject.requestId);
   const offer = subject.offerId ? feed.myOffers.find((o) => o.id === subject.offerId) : undefined;
+
+  if (subject.announcementId) {
+    const input = { kind: "acknowledge_announcement", requestId: subject.announcementId } as const;
+    return (
+      <Button tone="primary" busy={pending[intentKey(input)]} onClick={async () => {
+        if (await act(input)) onDone();
+      }}>
+        Acknowledge announcement
+      </Button>
+    );
+  }
 
   if (offer && request) {
     if (offer.status !== "pending" || request.status !== "offered")

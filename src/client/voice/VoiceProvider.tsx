@@ -23,6 +23,7 @@ export interface VoiceSubject {
   label: string;
   requestId?: string;
   offerId?: string;
+  announcementId?: string;
 }
 
 export type VoicePhase =
@@ -167,6 +168,7 @@ function VoiceState({ children }: { children: ReactNode }) {
       session = await c.api.voiceSession(c.session.memberToken, {
         requestId: target.requestId,
         offerId: target.offerId,
+        announcementId: target.announcementId,
       });
     } catch (err) {
       if (my !== attempt.current) return;
