@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CrewAvailability {
+  available
+  busy
+  protected
+}
+
+enum CrewRequestStatus {
+  open
+  offered
+  in_progress
+  awaiting_confirmation
+  done
+}
+
+enum CrewOfferStatus {
+  pending
+  accepted
+  declined
+  withdrawn
+}
+
+enum CrewPlanningStatus {
+  idle
+  planning
+  waiting
+  failed
+}
+
+model Crew {
+  id       String         @id @default(uuid())
+  code     String         @unique
+  name     String
+  members  CrewMember[]
+  requests CrewRequest[]
+  activity CrewActivity[]
+}
+
+model CrewMember {
+  id           String            @id @default(uuid())
+  crewId       String
+  profileCode  String
+  name         String
+  location     String
+  availability CrewAvailability
+  skills       String[]
+  sessionHash  String?           @unique
+  updatedAt    DateTime          @updatedAt
+  crew         Crew              @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  requests     CrewRequest[]     @relation("Requester")
+  assignments  CrewRequest[]     @relation("Assignee")
+  offers       CrewOffer[]
+  events       CrewEventRecord[]
+  voiceTickets CrewVoiceTicket[]
+
+  @@unique([crewId, profileCode])
+}
+
+model CrewRequest {
+  id             String             @id @default(uuid())
+  crewId         String
+  requesterId    String
+  assigneeId     String?
+  title          String
+  status         CrewRequestStatus  @default(open)
+  revision       Int                @default(1)
+  latestFact     String?
+  pickupLocation String?
+  destination    String?
+  planningStatus CrewPlanningStatus @default(idle)
+  planAttemptId  String?
+  planStartedAt  DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  crew           Crew               @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  requester      CrewMember         @relation("Requester", fields: [requesterId], references: [id])
+  assignee       CrewMember?        @relation("Assignee", fields: [assigneeId], references: [id])
+  offers         CrewOffer[]
+  activity       CrewActivity[]
+  events         CrewEventRecord[]
+  voiceTickets   CrewVoiceTicket[]
+
+  @@index([crewId, updatedAt])
+}
+
+model CrewOffer {
+  id           String            @id @default(uuid())
+  requestId    String
+  recipientId  String
+  status       CrewOfferStatus   @default(pending)
+  message      String
+  createdAt    DateTime          @default(now())
+  releasedAt   DateTime?
+  request      CrewRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  recipient    CrewMember        @relation(fields: [recipientId], references: [id])
+  voiceTickets CrewVoiceTicket[]
+
+  @@index([requestId, createdAt])
+  @@index([recipientId, createdAt])
+}
+
+model CrewEventRecord {
+  id        String       @id @default(uuid())
+  memberId  String
+  eventId   String
+  requestId String?
+  command   Json
+  message   String
+  createdAt DateTime     @default(now())
+  member    CrewMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  request   CrewRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, eventId])
+  @@index([requestId, createdAt])
+}
+
+model CrewActivity {
+  id        String       @id @default(uuid())
+  crewId    String
+  requestId String?
+  at        DateTime     @default(now())
+  actorName String
+  summary   String
+  crew      Crew         @relation(fields: [crewId], references: [id], onDelete: Cascade)
+  request   CrewRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([crewId, at])
+}
+
+model CrewVoiceTicket {
+  id             String       @id @default(uuid())
+  tokenHash      String       @unique
+  conversationId String       @unique
+  memberId       String
+  requestId      String?
+  offerId        String?
+  expiresAt      DateTime
+  member         CrewMember   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  request        CrewRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  offer          CrewOffer?   @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
