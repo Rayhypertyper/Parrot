@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express'
 import type { Prisma } from '@prisma/client'
 import type { CrewCommand } from '../../shared/crew/index'
+import { elevenLabsAnnouncement, getAnnouncementAudio, type AnnouncementSpeech } from './announcementAudio'
 import { recordCommand, type RecordedCommand } from './commands'
 import { bodyObject, CrewError, field, parseCommand, readEventId, required } from './input'
 import { maritimePlanner, planRequest, type Planner } from './planning'
@@ -27,7 +28,11 @@ function endpoint(handler: Handler) {
 
 export function createCrewHandlers(
   db: CrewDatabase,
-  { planner = maritimePlanner, voiceToken = getElevenLabsToken }: { planner?: Planner; voiceToken?: ElevenLabsToken } = {},
+  { planner = maritimePlanner, voiceToken = getElevenLabsToken, announcementSpeech = elevenLabsAnnouncement }: {
+    planner?: Planner
+    voiceToken?: ElevenLabsToken
+    announcementSpeech?: AnnouncementSpeech
+  } = {},
 ) {
   async function finish(actor: CrewActor, command: CrewCommand, recorded: RecordedCommand) {
     const newEvent = command.kind === 'availability_update'
@@ -48,7 +53,11 @@ export function createCrewHandlers(
       const body = bodyObject(req.body)
       return joinCrew(db, { crewCode: required(body, 'crewCode', 60), profileCode: required(body, 'profileCode', 60) })
     }),
-    feed: endpoint(async (req) => getFeed(db, await getMember(db, req.get('authorization')))),
+    feed: endpoint(async (req) => {
+      const member = await getMember(db, req.get('authorization'))
+      const announcementId = field({ announcementId: req.query.announcementAudio }, 'announcementId')
+      return announcementId ? getAnnouncementAudio(db, member, announcementId, announcementSpeech) : getFeed(db, member)
+    }),
     events: endpoint(async (req) => {
       const actor = await getMember(db, req.get('authorization'))
       const body = bodyObject(req.body)

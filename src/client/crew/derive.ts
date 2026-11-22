@@ -20,12 +20,12 @@ export function pendingOffers(feed: Feed): { offer: Offer; request: CrewRequest 
     );
 }
 
-export const isActive = (r: CrewRequest) => r.status !== "done";
+export const isActive = (r: CrewRequest) => !r.allHands && r.status !== "done";
 
 export function myAssignments(feed: Feed) {
   return feed.requests.filter(
     (r) =>
-      r.assigneeId === feed.me.id &&
+      !r.allHands && r.assigneeId === feed.me.id &&
       (r.status === "in_progress" || r.status === "awaiting_confirmation"),
   );
 }

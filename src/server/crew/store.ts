@@ -72,7 +72,7 @@ export async function getFeed(db: CrewDatabase, actor: CrewActor): Promise<CrewF
       orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
     })
     const myOffers = await tx.crewOffer.findMany({
-      where: { request: { crewId: actor.crewId, archivedAt: null }, recipientId: actor.id },
+      where: { request: { crewId: actor.crewId, archivedAt: null, allHands: false }, recipientId: actor.id },
       select: { id: true, requestId: true, recipientId: true, status: true, message: true },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 30,
     })

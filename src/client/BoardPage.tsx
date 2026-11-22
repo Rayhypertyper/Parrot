@@ -36,10 +36,10 @@ function Board({ feed }: { feed: Feed }) {
   const voice = useVoice();
   const { leave, session } = useCrew();
   const active = feed.requests.filter(isActive);
-  const done = feed.requests.filter((r) => !isActive(r));
+  const done = feed.requests.filter((r) => !r.allHands && r.status === "done");
   const [picked, setPicked] = useState<string | null>(null);
   const selected =
-    feed.requests.find((r) => r.id === picked) ?? active[0] ?? done[0] ?? null;
+    active.find((r) => r.id === picked) ?? done.find((r) => r.id === picked) ?? active[0] ?? done[0] ?? null;
   const offers = pendingOffers(feed);
 
   return (

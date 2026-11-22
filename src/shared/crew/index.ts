@@ -14,8 +14,17 @@ export type PlanningStatus = 'idle' | 'planning' | 'waiting' | 'failed'
 
 export function allHandsDetails(text: string): string | null {
   const trimmed = text.trim()
-  const prefix = /^all[\s-]+hands[\s-]+on[\s-]+deck\b[\s:,.!?–—-]*/i.exec(trimmed)
-  return prefix ? trimmed.slice(prefix[0].length) : null
+  const prefix = /^(?:please\s+)?all[\s-]+hands[\s-]+on[\s-]+deck\b[\s:,.!?–—-]*/i.exec(trimmed)
+  if (prefix) return trimmed.slice(prefix[0].length).replace(/^and\s+/i, '')
+  if (/^(?:(?:can|could|would|will|please)\s+)?everyone\b/i.test(trimmed)) return trimmed
+  if (/^(?:(?:can|could|would) you |please )?(?:ask|tell|notify|ping|alert) everyone\b/i.test(trimmed)) return trimmed
+  return null
+}
+
+export function allHandsSpeech(title: string, destination?: string | null) {
+  const details = allHandsDetails(title) ?? title
+  const location = destination && !details.toLowerCase().includes(destination.toLowerCase()) ? `Location: ${destination}.` : ''
+  return ['All hands on deck.', details, location].filter(Boolean).join(' ')
 }
 
 export interface CrewMember {

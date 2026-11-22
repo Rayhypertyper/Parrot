@@ -82,10 +82,15 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
   process.env.CREW_PLANNER_URL = `${plannerUrl}/plan`
   assert.equal((await fetch(process.env.CREW_PLANNER_URL, { method: 'POST' })).status, 401)
 
+  const announcementTexts: string[] = []
   const handlers = createCrewHandlers(db, {
     voiceToken: async () => {
       conversationId = `conv_${randomUUID()}`
       return { token: 'local-elevenlabs-token', conversationId }
+    },
+    announcementSpeech: async (text) => {
+      announcementTexts.push(text)
+      return Buffer.from(text).toString('base64')
     },
   })
   const app = express()
@@ -399,7 +404,9 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
     } })
     const session = await call(crewRoutes.voiceSession, {}, jo)
     assert.equal(session.status, 200)
-    const voice = await call(crewRoutes.voiceTool, { kind: 'request_help', text: 'All hands on deck!' }, undefined, {
+    const voice = await call(crewRoutes.voiceTool, {
+      kind: 'request_help', text: 'All hands on deck, and can everyone go to floor 2?', location: 'floor 2',
+    }, undefined, {
       'x-crew-webhook-secret': process.env.ELEVENLABS_WEBHOOK_SECRET,
       'x-crew-ticket': session.data.dynamicVariables.secret__crew_ticket,
       'x-elevenlabs-conversation-id': conversationId,
@@ -415,10 +422,20 @@ test('Crew Radio HTTP, PostgreSQL and the coordinator', { skip: !databaseUrl, ti
       assert.equal(recipient.requests.find(({ id }) => id === voice.data.requestId)?.allHands, true)
       assert.equal(recipient.myOffers.some(({ requestId }) => requestId === voice.data.requestId), false)
     }
-    const typed = await event(jo, { kind: 'request_help', text: 'All hands on deck — bring power strips to check-in.' })
+    const audioPath = `${crewRoutes.feed}?announcementAudio=${voice.data.requestId}`
+    const clip = await call(audioPath, undefined, jules)
+    assert.equal(clip.status, 200)
+    assert.equal(Buffer.from(clip.data.audio, 'base64').toString(), 'All hands on deck. can everyone go to floor 2?')
+    assert.equal((await call(audioPath, undefined, maya)).data.audio, clip.data.audio)
+    assert.equal((await call(audioPath)).status, 401)
+    const typed = await event(jo, { kind: 'request_help', text: 'EVERYONE GO TO FLOOR 2', location: 'FLOOR 2' })
     assert.equal(typed.status, 200)
     assert.equal((await feed(jules)).requests.find(({ id }) => id === typed.data.requestId)?.allHands, true)
+    assert.equal((await call(crewRoutes.retryPlan, { requestId: typed.data.requestId }, jo)).status, 409)
+    assert.equal(modelCalls, callsBefore)
+    assert.equal(announcementTexts.length, 2)
     const otherCrew = await fixture()
     assert.equal((await feed(otherCrew.jo)).requests.length, 0)
+    assert.equal((await call(audioPath, undefined, otherCrew.jo)).status, 404)
   })
 })

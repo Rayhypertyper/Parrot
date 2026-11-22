@@ -16,6 +16,7 @@ export interface CrewApi {
   directory(crewCode: string): Promise<CrewDirectory | null>;
   join(body: JoinBody): Promise<JoinResult>;
   feed(token: string): Promise<Feed>;
+  announcementAudio(token: string, requestId: string): Promise<{ audio: string }>;
   sendEvent(token: string, body: CrewEventBody): Promise<CrewEventResult>;
   retryPlan(token: string, requestId: string): Promise<RetryPlanResult>;
   voiceSession(token: string, body: VoiceSessionBody): Promise<VoiceSession>;

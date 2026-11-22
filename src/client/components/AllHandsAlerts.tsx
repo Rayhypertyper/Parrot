@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import { allHandsDetails } from "../../shared/crew/index";
-import type { Feed } from "../crew/contract";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { allHandsDetails, allHandsSpeech } from "../../shared/crew/index";
+import type { CrewRequest, Feed } from "../crew/contract";
+import { useCrew } from "../crew/CrewProvider";
 import { memberById } from "../crew/derive";
 import { IconAlert, IconX } from "../ui/icons";
 import { playPing } from "../voice/ping";
 
 export function AllHandsAlerts({ feed }: { feed: Feed }) {
+  const { api, session } = useCrew();
   const storageKey = `crew-radio:all-hands:${feed.me.id}`;
   const [dismissed, setDismissed] = useState<string[]>(() => {
     try {
@@ -17,8 +19,10 @@ export function AllHandsAlerts({ feed }: { feed: Feed }) {
   });
   const [audioReady, setAudioReady] = useState(false);
   const audio = useRef<AudioContext | null>(null);
+  const playback = useRef(0);
   const announced = useRef(new Set<string>());
   const alerts = feed.requests.filter((request) => request.allHands && !dismissed.includes(request.id));
+  const latest = feed.requests.find((request) => request.allHands && request.status === "open");
 
   useEffect(() => {
     function prepareAudio() {
@@ -39,14 +43,37 @@ export function AllHandsAlerts({ feed }: { feed: Feed }) {
     };
   }, []);
 
+  const playAnnouncement = useCallback(async (request: CrewRequest, ping = false) => {
+    if (document.hidden || typeof AudioContext === "undefined") return;
+    const context = (audio.current ??= new AudioContext());
+    const attempt = ++playback.current;
+    const current = () => playback.current === attempt && audio.current === context && !document.hidden;
+    try {
+      await context.resume();
+      if (!current()) return;
+      if (ping) playPing(context, 880);
+      if (!api || !session) return;
+      const { audio: clip } = await api.announcementAudio(session.memberToken, request.id);
+      const bytes = Uint8Array.from(atob(clip), (character) => character.charCodeAt(0));
+      const buffer = await context.decodeAudioData(bytes.buffer);
+      if (!current()) return;
+      const voice = context.createBufferSource();
+      voice.buffer = buffer;
+      voice.connect(context.destination);
+      voice.start();
+    } catch {
+      if (current() && "speechSynthesis" in window) {
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(allHandsSpeech(request.title, request.destination)));
+      }
+    }
+  }, [api, session]);
+
   useEffect(() => {
-    const context = audio.current;
-    if (!audioReady || context?.state !== "running" || document.hidden) return;
-    const unread = alerts.filter(({ id, requesterId }) => requesterId !== feed.me.id && !announced.current.has(id));
-    if (!unread.length) return;
-    unread.forEach(({ id }) => announced.current.add(id));
-    playPing(context, 880);
-  }, [alerts, audioReady, feed.me.id]);
+    if (!audioReady || audio.current?.state !== "running" || document.hidden || !latest ||
+        latest.requesterId === feed.me.id || dismissed.includes(latest.id) || announced.current.has(latest.id)) return;
+    announced.current.add(latest.id);
+    void playAnnouncement(latest, true);
+  }, [latest, dismissed, audioReady, feed.me.id, playAnnouncement]);
 
   function dismiss(id: string) {
     const next = [...dismissed, id];
@@ -71,6 +98,9 @@ export function AllHandsAlerts({ feed }: { feed: Feed }) {
           {request.destination && !details.includes(request.destination) && (
             <span className="cr-all-hands__detail">{request.destination}</span>
           )}
+          <button className="cr-link cr-all-hands__detail" onClick={() => void playAnnouncement(request)}>
+            Play announcement
+          </button>
         </span>
         <button className="cr-icon-btn" onClick={() => dismiss(request.id)} aria-label="Dismiss all-hands alert">
           <IconX size={16} />

@@ -69,6 +69,8 @@ export const httpAdapter: CrewApi = {
   join: (body) => call<JoinResult>(crewRoutes.join, { method: "POST", body }),
 
   feed: (token) => call<Feed>(crewRoutes.feed, { token }),
+  announcementAudio: (token, requestId) =>
+    call<{ audio: string }>(`${crewRoutes.feed}?announcementAudio=${encodeURIComponent(requestId)}`, { token }),
 
   sendEvent: (token, body) =>
     call<CrewEventResult>(crewRoutes.events, { method: "POST", token, body }),

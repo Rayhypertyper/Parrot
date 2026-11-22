@@ -340,6 +340,10 @@ export const fixtureAdapter: CrewApi = {
     return { requestId, result: "planning", message: "Looking for help." };
   },
 
+  async announcementAudio() {
+    throw new CrewApiError("Sample mode uses the device voice for announcements.", 503);
+  },
+
   async voiceSession(token) {
     await wait(400);
     memberFor(load(), token);

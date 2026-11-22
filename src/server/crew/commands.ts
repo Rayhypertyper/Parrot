@@ -63,7 +63,7 @@ async function applyCommand(tx: CrewTransaction, member: CrewMember, command: Cr
       })
       return {
         requestId: request.id, message: allHands ? 'All-hands alert sent.' : 'Request recorded.',
-        summary: command.text, plan: [request.id],
+        summary: command.text, plan: allHands ? [] : [request.id],
       }
     }
     case 'availability_update':
@@ -98,7 +98,7 @@ async function changeAvailability(
   }
   if (command.availability === 'available') {
     const open = await tx.crewRequest.findMany({
-      where: { crewId: member.crewId, status: 'open', archivedAt: null }, select: { id: true },
+      where: { crewId: member.crewId, status: 'open', archivedAt: null, allHands: false }, select: { id: true },
     })
     plan.push(...open.map(({ id }) => id))
   }
@@ -119,7 +119,7 @@ async function replyToOffer(
   })
   if (!offer || (command.requestId && command.requestId !== offer.requestId)) notFound('Offer was not found.')
   const request = offer.request
-  if (offer.status !== 'pending' || offer.releasedAt || request.archivedAt || request.status !== 'offered') conflict(staleOffer)
+  if (offer.status !== 'pending' || offer.releasedAt || request.archivedAt || request.allHands || request.status !== 'offered') conflict(staleOffer)
 
   if (command.kind === 'accept') {
     if (member.availability !== 'available' || member.id === request.requesterId) conflict(staleOffer)
@@ -186,7 +186,7 @@ async function updateHandoff(
   command: Extract<CrewCommand, { kind: 'blocked' | 'report_delivery' | 'confirm_receipt' }>,
 ): Promise<Mutation> {
   const request = await tx.crewRequest.findFirst({
-    where: { id: command.requestId, crewId: member.crewId, archivedAt: null },
+    where: { id: command.requestId, crewId: member.crewId, archivedAt: null, allHands: false },
   })
   if (!request) notFound('Request was not found.')
   const confirms = command.kind === 'confirm_receipt'
